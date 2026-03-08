@@ -67,23 +67,11 @@ func CheckYaku(captured []Card) []Yaku {
 	switch {
 	case hasAkatan && hasAotan:
 		// 赤短・青短の重複: 10文 + 短冊が増えるごとに+1文
-		extra := len(tanzaku) - 6
-		if extra < 0 {
-			extra = 0
-		}
-		yakus = append(yakus, Yaku{"赤短・青短の重複", 10 + extra})
+		yakus = append(yakus, Yaku{"赤短・青短の重複", 10 + extraPoints(len(tanzaku), 6)})
 	case hasAkatan:
-		extra := len(tanzaku) - 3
-		if extra < 0 {
-			extra = 0
-		}
-		yakus = append(yakus, Yaku{"赤短", 5 + extra})
+		yakus = append(yakus, Yaku{"赤短", 5 + extraPoints(len(tanzaku), 3)})
 	case hasAotan:
-		extra := len(tanzaku) - 3
-		if extra < 0 {
-			extra = 0
-		}
-		yakus = append(yakus, Yaku{"青短", 5 + extra})
+		yakus = append(yakus, Yaku{"青短", 5 + extraPoints(len(tanzaku), 3)})
 	}
 
 	// タネ: 種札5枚以上で1文 + 1枚ごとに+1文（猪鹿蝶ができたら無効）
@@ -147,4 +135,11 @@ func contains(ids []int, target int) bool {
 		}
 	}
 	return false
+}
+
+func extraPoints(count, base int) int {
+	if count < base {
+		return 0
+	}
+	return count - base
 }

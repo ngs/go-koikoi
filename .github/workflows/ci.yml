@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   lint:
@@ -30,4 +31,73 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: stable
-      - run: go test -v -race ./...
+      - name: Run tests with coverage
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Coverage summary
+        run: |
+          echo '## Coverage Report' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Generate HTML coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.html
+      - name: Post coverage to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('coverage.out', 'utf8');
+            const lines = output.trim().split('\n');
+            const totalLine = lines[lines.length - 1];
+            const match = totalLine.match(/([\d.]+)%/);
+            const total = match ? match[1] + '%' : 'unknown';
+
+            const { execSync } = require('child_process');
+            const funcOutput = execSync('go tool cover -func=coverage.out').toString();
+
+            const body = [
+              '## Coverage Report',
+              '',
+              `**Total: ${total}**`,
+              '',
+              '<details>',
+              '<summary>Details</summary>',
+              '',
+              '```',
+              funcOutput.trim(),
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const marker = '## Coverage Report';
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.startsWith(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

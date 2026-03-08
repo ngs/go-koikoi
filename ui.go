@@ -911,44 +911,28 @@ func cardLabel(c Card) string {
 // ---- キーバインド ----
 
 func (u *UI) setKeybindings(g *gocui.Gui) error {
-	if err := g.SetKeybinding("", gocui.KeyCtrlC, gocui.ModNone, quit); err != nil {
-		return err
+	bindings := []struct {
+		key     interface{}
+		handler func(*gocui.Gui, *gocui.View) error
+	}{
+		{gocui.KeyCtrlC, quit},
+		{'q', u.handleQuit},
+		{'l', u.handleToggleLog},
+		{'?', u.handleToggleHelp},
+		{'o', u.handleToggleOptions},
+		{gocui.KeyArrowUp, u.handleUp},
+		{gocui.KeyArrowDown, u.handleDown},
+		{gocui.KeyArrowLeft, u.handleLeft},
+		{gocui.KeyArrowRight, u.handleRight},
+		{gocui.KeyEnter, u.handleEnter},
+		{gocui.KeyEsc, u.handleEsc},
+		{'y', u.handleYes},
+		{'n', u.handleNo},
 	}
-	if err := g.SetKeybinding("", 'q', gocui.ModNone, u.handleQuit); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", 'l', gocui.ModNone, u.handleToggleLog); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", '?', gocui.ModNone, u.handleToggleHelp); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", 'o', gocui.ModNone, u.handleToggleOptions); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", gocui.KeyArrowUp, gocui.ModNone, u.handleUp); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", gocui.KeyArrowDown, gocui.ModNone, u.handleDown); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", gocui.KeyArrowLeft, gocui.ModNone, u.handleLeft); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", gocui.KeyArrowRight, gocui.ModNone, u.handleRight); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", gocui.KeyEnter, gocui.ModNone, u.handleEnter); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", gocui.KeyEsc, gocui.ModNone, u.handleEsc); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", 'y', gocui.ModNone, u.handleYes); err != nil {
-		return err
-	}
-	if err := g.SetKeybinding("", 'n', gocui.ModNone, u.handleNo); err != nil {
-		return err
+	for _, b := range bindings {
+		if err := g.SetKeybinding("", b.key, gocui.ModNone, b.handler); err != nil {
+			return err
+		}
 	}
 	return nil
 }
