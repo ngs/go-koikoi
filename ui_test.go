@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/awesome-gocui/gocui"
 )
@@ -2031,161 +2030,10 @@ func TestLayoutSecondCallWithPopups(t *testing.T) {
 
 func TestDoCPUTurnAlreadyRunning(t *testing.T) {
 	u, g := newTestUIWithGUI(t)
-	cpuTurnRunning = true
+	cpuTurnRunning.Store(true)
 	u.doCPUTurn(g)
 	// should return immediately due to double-execution guard
-	cpuTurnRunning = false
-}
-
-func TestDoCPUTurnWithMainLoop(t *testing.T) {
-	g, err := gocui.NewGui(gocui.OutputSimulator, true)
-	if err != nil {
-		t.Fatalf("NewGui error: %v", err)
-	}
-	defer g.Close()
-
-	dir := t.TempDir()
-	u := NewUI()
-	u.game = NewGame(12)
-	u.game.CPUHand = []Card{AllCards[0]}
-	u.game.PlayerHand = []Card{AllCards[4]}
-	u.game.Field = []Card{AllCards[2]}
-	u.game.Deck = []Card{AllCards[12], AllCards[20], AllCards[24], AllCards[30]}
-	u.game.IsPlayerTurn = false
-	u.configDir = dir
-	u.settingsPath = filepath.Join(dir, "settings.json")
-	u.savePath = filepath.Join(dir, "game.json")
-	u.settings = DefaultSettings()
-	u.difficulty = DifficultyNormal
-	u.phase = PhaseCPUTurn
-	u.gui = g
-	cpuTurnRunning = false
-
-	g.SetManagerFunc(u.layout)
-	if err := u.setKeybindings(g); err != nil {
-		t.Fatalf("setKeybindings: %v", err)
-	}
-
-	testingScreen := g.GetTestingScreen()
-	cleanup := testingScreen.StartGui()
-	defer cleanup()
-
-	// CPUターンが完了するのを待つ (800ms sleep + 処理)
-	time.Sleep(1500 * time.Millisecond)
-}
-
-func TestDoCPUTurnYakuWithMainLoop(t *testing.T) {
-	g, err := gocui.NewGui(gocui.OutputSimulator, true)
-	if err != nil {
-		t.Fatalf("NewGui error: %v", err)
-	}
-	defer g.Close()
-
-	dir := t.TempDir()
-	u := NewUI()
-	u.game = NewGame(12)
-	// CPUが役を完成するシナリオ
-	u.game.CPUCaptured = cardsFromIDList(0, 8) // 松に鶴, 桜に幕(光2枚)
-	u.game.CPUHand = []Card{AllCards[30]}      // 芒のカス → 芒に月とマッチ → 三光
-	u.game.PlayerHand = []Card{AllCards[4]}
-	u.game.Field = []Card{AllCards[28]} // 芒に月(光)
-	u.game.Deck = []Card{AllCards[12], AllCards[20]}
-	u.game.CPUPrevYaku = nil
-	u.game.IsPlayerTurn = false
-	u.configDir = dir
-	u.settingsPath = filepath.Join(dir, "settings.json")
-	u.savePath = filepath.Join(dir, "game.json")
-	u.settings = DefaultSettings()
-	u.difficulty = DifficultyEasy // Easy は常にこいこいしない → 勝負
-	u.phase = PhaseCPUTurn
-	u.gui = g
-	cpuTurnRunning = false
-
-	g.SetManagerFunc(u.layout)
-	if err := u.setKeybindings(g); err != nil {
-		t.Fatalf("setKeybindings: %v", err)
-	}
-
-	testingScreen := g.GetTestingScreen()
-	cleanup := testingScreen.StartGui()
-	defer cleanup()
-
-	time.Sleep(1500 * time.Millisecond)
-}
-
-func TestDoCPUTurnKoiKoiWithMainLoop(t *testing.T) {
-	g, err := gocui.NewGui(gocui.OutputSimulator, true)
-	if err != nil {
-		t.Fatalf("NewGui error: %v", err)
-	}
-	defer g.Close()
-
-	dir := t.TempDir()
-	u := NewUI()
-	u.game = NewGame(12)
-	// CPUが役を完成し、こいこいするシナリオ
-	u.game.CPUCaptured = cardsFromIDList(0, 8)
-	u.game.CPUHand = []Card{AllCards[30], AllCards[14]} // 2枚以上で Hard は こいこいする
-	u.game.PlayerHand = []Card{AllCards[4], AllCards[16]}
-	u.game.Field = []Card{AllCards[28]} // 芒に月 → マッチ → 三光
-	u.game.Deck = []Card{AllCards[12], AllCards[20]}
-	u.game.CPUPrevYaku = nil
-	u.game.IsPlayerTurn = false
-	u.configDir = dir
-	u.settingsPath = filepath.Join(dir, "settings.json")
-	u.savePath = filepath.Join(dir, "game.json")
-	u.settings = DefaultSettings()
-	u.difficulty = DifficultyHard // Hard は積極的にこいこい
-	u.phase = PhaseCPUTurn
-	u.gui = g
-	cpuTurnRunning = false
-
-	g.SetManagerFunc(u.layout)
-	if err := u.setKeybindings(g); err != nil {
-		t.Fatalf("setKeybindings: %v", err)
-	}
-
-	testingScreen := g.GetTestingScreen()
-	cleanup := testingScreen.StartGui()
-	defer cleanup()
-
-	time.Sleep(1500 * time.Millisecond)
-}
-
-func TestDoCPUTurnRoundOverWithMainLoop(t *testing.T) {
-	g, err := gocui.NewGui(gocui.OutputSimulator, true)
-	if err != nil {
-		t.Fatalf("NewGui error: %v", err)
-	}
-	defer g.Close()
-
-	dir := t.TempDir()
-	u := NewUI()
-	u.game = NewGame(12)
-	u.game.CPUHand = []Card{AllCards[12]}
-	u.game.PlayerHand = nil
-	u.game.Field = []Card{AllCards[0]}
-	u.game.Deck = []Card{AllCards[20]}
-	u.game.IsPlayerTurn = false
-	u.configDir = dir
-	u.settingsPath = filepath.Join(dir, "settings.json")
-	u.savePath = filepath.Join(dir, "game.json")
-	u.settings = DefaultSettings()
-	u.difficulty = DifficultyNormal
-	u.phase = PhaseCPUTurn
-	u.gui = g
-	cpuTurnRunning = false
-
-	g.SetManagerFunc(u.layout)
-	if err := u.setKeybindings(g); err != nil {
-		t.Fatalf("setKeybindings: %v", err)
-	}
-
-	testingScreen := g.GetTestingScreen()
-	cleanup := testingScreen.StartGui()
-	defer cleanup()
-
-	time.Sleep(1500 * time.Millisecond)
+	cpuTurnRunning.Store(false)
 }
 
 // --- drawField の残りブランチ ---

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/awesome-gocui/gocui"
@@ -1407,14 +1408,13 @@ func (u *UI) onNextRound(_ *gocui.Gui) error {
 
 // ---- CPUターン ----
 
-var cpuTurnRunning bool
+var cpuTurnRunning atomic.Bool
 
 func (u *UI) doCPUTurn(g *gocui.Gui) {
-	if cpuTurnRunning {
+	if !cpuTurnRunning.CompareAndSwap(false, true) {
 		return
 	}
-	cpuTurnRunning = true
-	defer func() { cpuTurnRunning = false }()
+	defer cpuTurnRunning.Store(false)
 
 	time.Sleep(800 * time.Millisecond)
 
