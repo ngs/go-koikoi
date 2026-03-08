@@ -128,3 +128,23 @@ func TestExecuteCPUTurnNoCapture(t *testing.T) {
 		t.Fatalf("executeCPUTurn error: %v", err)
 	}
 }
+
+func TestExecuteCPUTurnEmptyHand(t *testing.T) {
+	u, g := setupCPUTurnUI(t)
+	u.game = NewGame(12)
+	u.game.CPUHand = nil
+	u.game.PlayerHand = []Card{AllCards[4]}
+	u.game.Field = []Card{AllCards[0]}
+	u.game.Deck = []Card{AllCards[12]}
+	u.game.IsPlayerTurn = false
+
+	if err := u.executeCPUTurn(g); err != nil {
+		t.Fatalf("executeCPUTurn error: %v", err)
+	}
+	if !u.game.IsPlayerTurn {
+		t.Error("IsPlayerTurn should be true after empty hand guard")
+	}
+	if u.phase != PhasePlayerSelectHand {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand", u.phase)
+	}
+}
