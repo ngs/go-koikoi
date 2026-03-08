@@ -1,65 +1,66 @@
-//go:build !race
-
 package main
 
 import (
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/awesome-gocui/gocui"
 )
 
-// These tests use gocui's OutputSimulator + StartGui which spawns a pollEvent
-// goroutine accessing a global tcell.SimulationScreen. The gocui library does
-// not synchronize this goroutine with Close(), causing unavoidable data races
-// between consecutive tests. They are excluded from -race builds.
-
-func TestDoCPUTurnWithMainLoop(t *testing.T) {
-	g, err := gocui.NewGui(gocui.OutputSimulator, true)
-	if err != nil {
-		t.Fatalf("NewGui error: %v", err)
-	}
-	defer g.Close()
-
-	dir := t.TempDir()
+func setupCPUTurnUI(t *testing.T) (*UI, *gocui.Gui) {
+	t.Helper()
+	g := newTestGUI(t)
 	u := NewUI()
+	dir := t.TempDir()
+	u.configDir = dir
+	u.settingsPath = filepath.Join(dir, "settings.json")
+	u.savePath = filepath.Join(dir, "game.json")
+	u.settings = DefaultSettings()
+	u.gui = g
+	return u, g
+}
+
+func TestDoCPUTurnNormalPath(t *testing.T) {
+	u, g := setupCPUTurnUI(t)
+	u.game = NewGame(12)
+	u.game.CPUHand = []Card{AllCards[0]}
+	u.game.PlayerHand = []Card{AllCards[4]}
+	u.game.Field = []Card{AllCards[2]}
+	u.game.Deck = []Card{AllCards[12]}
+	u.game.IsPlayerTurn = false
+	u.difficulty = DifficultyNormal
+	cpuTurnRunning.Store(false)
+
+	u.doCPUTurn(g)
+
+	if cpuTurnRunning.Load() {
+		t.Error("cpuTurnRunning should be false after doCPUTurn")
+	}
+}
+
+func TestExecuteCPUTurnNormal(t *testing.T) {
+	u, g := setupCPUTurnUI(t)
 	u.game = NewGame(12)
 	u.game.CPUHand = []Card{AllCards[0]}
 	u.game.PlayerHand = []Card{AllCards[4]}
 	u.game.Field = []Card{AllCards[2]}
 	u.game.Deck = []Card{AllCards[12], AllCards[20], AllCards[24], AllCards[30]}
 	u.game.IsPlayerTurn = false
-	u.configDir = dir
-	u.settingsPath = filepath.Join(dir, "settings.json")
-	u.savePath = filepath.Join(dir, "game.json")
-	u.settings = DefaultSettings()
 	u.difficulty = DifficultyNormal
-	u.phase = PhaseCPUTurn
-	u.gui = g
-	cpuTurnRunning.Store(false)
 
-	g.SetManagerFunc(u.layout)
-	if err := u.setKeybindings(g); err != nil {
-		t.Fatalf("setKeybindings: %v", err)
+	if err := u.executeCPUTurn(g); err != nil {
+		t.Fatalf("executeCPUTurn error: %v", err)
 	}
-
-	testingScreen := g.GetTestingScreen()
-	cleanup := testingScreen.StartGui()
-	defer cleanup()
-
-	time.Sleep(1500 * time.Millisecond)
+	if !u.game.IsPlayerTurn {
+		t.Error("IsPlayerTurn should be true after CPU turn")
+	}
+	if u.phase != PhasePlayerSelectHand {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand", u.phase)
+	}
 }
 
-func TestDoCPUTurnYakuWithMainLoop(t *testing.T) {
-	g, err := gocui.NewGui(gocui.OutputSimulator, true)
-	if err != nil {
-		t.Fatalf("NewGui error: %v", err)
-	}
-	defer g.Close()
-
-	dir := t.TempDir()
-	u := NewUI()
+func TestExecuteCPUTurnYaku(t *testing.T) {
+	u, g := setupCPUTurnUI(t)
 	u.game = NewGame(12)
 	u.game.CPUCaptured = cardsFromIDList(0, 8)
 	u.game.CPUHand = []Card{AllCards[30]}
@@ -68,97 +69,62 @@ func TestDoCPUTurnYakuWithMainLoop(t *testing.T) {
 	u.game.Deck = []Card{AllCards[12], AllCards[20]}
 	u.game.CPUPrevYaku = nil
 	u.game.IsPlayerTurn = false
-	u.configDir = dir
-	u.settingsPath = filepath.Join(dir, "settings.json")
-	u.savePath = filepath.Join(dir, "game.json")
-	u.settings = DefaultSettings()
 	u.difficulty = DifficultyEasy
-	u.phase = PhaseCPUTurn
-	u.gui = g
-	cpuTurnRunning.Store(false)
 
-	g.SetManagerFunc(u.layout)
-	if err := u.setKeybindings(g); err != nil {
-		t.Fatalf("setKeybindings: %v", err)
+	if err := u.executeCPUTurn(g); err != nil {
+		t.Fatalf("executeCPUTurn error: %v", err)
 	}
-
-	testingScreen := g.GetTestingScreen()
-	cleanup := testingScreen.StartGui()
-	defer cleanup()
-
-	time.Sleep(1500 * time.Millisecond)
+	if u.game.CPUScore == 0 {
+		t.Error("CPUScore should be > 0 after yaku win")
+	}
 }
 
-func TestDoCPUTurnKoiKoiWithMainLoop(t *testing.T) {
-	g, err := gocui.NewGui(gocui.OutputSimulator, true)
-	if err != nil {
-		t.Fatalf("NewGui error: %v", err)
-	}
-	defer g.Close()
-
-	dir := t.TempDir()
-	u := NewUI()
+func TestExecuteCPUTurnKoiKoi(t *testing.T) {
+	u, g := setupCPUTurnUI(t)
 	u.game = NewGame(12)
 	u.game.CPUCaptured = cardsFromIDList(0, 8)
-	u.game.CPUHand = []Card{AllCards[30], AllCards[14]}
-	u.game.PlayerHand = []Card{AllCards[4], AllCards[16]}
+	u.game.CPUHand = []Card{AllCards[30], AllCards[14], AllCards[18]}
+	u.game.PlayerHand = []Card{AllCards[4], AllCards[16], AllCards[22]}
 	u.game.Field = []Card{AllCards[28]}
 	u.game.Deck = []Card{AllCards[12], AllCards[20]}
 	u.game.CPUPrevYaku = nil
 	u.game.IsPlayerTurn = false
-	u.configDir = dir
-	u.settingsPath = filepath.Join(dir, "settings.json")
-	u.savePath = filepath.Join(dir, "game.json")
-	u.settings = DefaultSettings()
 	u.difficulty = DifficultyHard
-	u.phase = PhaseCPUTurn
-	u.gui = g
-	cpuTurnRunning.Store(false)
 
-	g.SetManagerFunc(u.layout)
-	if err := u.setKeybindings(g); err != nil {
-		t.Fatalf("setKeybindings: %v", err)
+	if err := u.executeCPUTurn(g); err != nil {
+		t.Fatalf("executeCPUTurn error: %v", err)
 	}
-
-	testingScreen := g.GetTestingScreen()
-	cleanup := testingScreen.StartGui()
-	defer cleanup()
-
-	time.Sleep(1500 * time.Millisecond)
+	if !u.game.CPUKoiKoi {
+		t.Error("CPUKoiKoi should be true")
+	}
 }
 
-func TestDoCPUTurnRoundOverWithMainLoop(t *testing.T) {
-	g, err := gocui.NewGui(gocui.OutputSimulator, true)
-	if err != nil {
-		t.Fatalf("NewGui error: %v", err)
-	}
-	defer g.Close()
-
-	dir := t.TempDir()
-	u := NewUI()
+func TestExecuteCPUTurnRoundOver(t *testing.T) {
+	u, g := setupCPUTurnUI(t)
 	u.game = NewGame(12)
 	u.game.CPUHand = []Card{AllCards[12]}
 	u.game.PlayerHand = nil
 	u.game.Field = []Card{AllCards[0]}
 	u.game.Deck = []Card{AllCards[20]}
 	u.game.IsPlayerTurn = false
-	u.configDir = dir
-	u.settingsPath = filepath.Join(dir, "settings.json")
-	u.savePath = filepath.Join(dir, "game.json")
-	u.settings = DefaultSettings()
 	u.difficulty = DifficultyNormal
-	u.phase = PhaseCPUTurn
-	u.gui = g
-	cpuTurnRunning.Store(false)
 
-	g.SetManagerFunc(u.layout)
-	if err := u.setKeybindings(g); err != nil {
-		t.Fatalf("setKeybindings: %v", err)
+	if err := u.executeCPUTurn(g); err != nil {
+		t.Fatalf("executeCPUTurn error: %v", err)
 	}
+}
 
-	testingScreen := g.GetTestingScreen()
-	cleanup := testingScreen.StartGui()
-	defer cleanup()
+func TestExecuteCPUTurnNoCapture(t *testing.T) {
+	u, g := setupCPUTurnUI(t)
+	u.game = NewGame(12)
+	u.game.CPUHand = []Card{AllCards[0]}
+	u.game.PlayerHand = []Card{AllCards[4]}
+	u.game.Field = []Card{AllCards[12]}
+	u.game.Deck = []Card{AllCards[16]}
+	u.game.IsPlayerTurn = false
+	u.difficulty = DifficultyNormal
 
-	time.Sleep(1500 * time.Millisecond)
+	if err := u.executeCPUTurn(g); err != nil {
+		t.Fatalf("executeCPUTurn error: %v", err)
+	}
 }

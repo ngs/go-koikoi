@@ -66,12 +66,5 @@ func LoadSettings(path string) (Settings, error) {
 }
 
 func SaveSettings(path string, s Settings) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
+	return saveJSON(path, s)
 }

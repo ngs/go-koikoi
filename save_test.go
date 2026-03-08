@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -224,6 +225,22 @@ func TestDeleteSaveNonExistent(t *testing.T) {
 	// Should not panic when deleting a non-existent file
 	DeleteSave("/nonexistent/game.json")
 	t.Log("DeleteSave on non-existent path did not panic")
+}
+
+func TestSaveJSONMkdirAllError(t *testing.T) {
+	err := saveJSON("/dev/null/impossible/data.json", map[string]int{"a": 1})
+	if err == nil {
+		t.Error("saveJSON should return error when MkdirAll fails")
+	}
+}
+
+func TestSaveJSONMarshalError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "data.json")
+	err := saveJSON(path, math.Inf(1))
+	if err == nil {
+		t.Error("saveJSON should return error when MarshalIndent fails")
+	}
 }
 
 func TestSaveGameCreatesDir(t *testing.T) {

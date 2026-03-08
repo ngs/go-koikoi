@@ -85,15 +85,19 @@ func SaveDataToGame(sd *SaveData) *Game {
 	return g
 }
 
-func SaveGame(path string, sd *SaveData) error {
+func saveJSON(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(sd, "", "  ")
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0o600)
+}
+
+func SaveGame(path string, sd *SaveData) error {
+	return saveJSON(path, sd)
 }
 
 func LoadGame(path string) (SaveData, error) {

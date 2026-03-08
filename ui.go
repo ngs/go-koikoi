@@ -1419,55 +1419,59 @@ func (u *UI) doCPUTurn(g *gocui.Gui) {
 	time.Sleep(800 * time.Millisecond)
 
 	g.Update(func(g *gocui.Gui) error {
-		handCard, fieldChoice := CPUChooseHandCard(u.game, u.difficulty)
-		captured := u.game.PlayCard(handCard, fieldChoice, false)
-		if len(captured) > 0 {
-			u.addLog(fmt.Sprintf("CPU: %s -> 獲得: %s", handCard.Name, capturedNames(captured)))
+		return u.executeCPUTurn(g)
+	})
+}
+
+func (u *UI) executeCPUTurn(g *gocui.Gui) error {
+	handCard, fieldChoice := CPUChooseHandCard(u.game, u.difficulty)
+	captured := u.game.PlayCard(handCard, fieldChoice, false)
+	if len(captured) > 0 {
+		u.addLog(fmt.Sprintf("CPU: %s -> 獲得: %s", handCard.Name, capturedNames(captured)))
+	} else {
+		u.addLog(fmt.Sprintf("CPU: %sを場に出した", handCard.Name))
+	}
+
+	drawn, ok := u.game.DrawFromDeck()
+	if ok {
+		drawnMatches := u.game.MatchingFieldCards(drawn)
+		drawnFieldChoice := CPUChooseFieldCard(drawnMatches)
+		drawnCaptured := u.game.PlayDrawnCard(drawn, drawnFieldChoice, false)
+		if len(drawnCaptured) > 0 {
+			u.addLog(fmt.Sprintf("CPU山札: %s -> 獲得: %s", drawn.Name, capturedNames(drawnCaptured)))
 		} else {
-			u.addLog(fmt.Sprintf("CPU: %sを場に出した", handCard.Name))
+			u.addLog(fmt.Sprintf("CPU山札: %s -> 場へ", drawn.Name))
 		}
+	}
 
-		drawn, ok := u.game.DrawFromDeck()
-		if ok {
-			drawnMatches := u.game.MatchingFieldCards(drawn)
-			drawnFieldChoice := CPUChooseFieldCard(drawnMatches)
-			drawnCaptured := u.game.PlayDrawnCard(drawn, drawnFieldChoice, false)
-			if len(drawnCaptured) > 0 {
-				u.addLog(fmt.Sprintf("CPU山札: %s -> 獲得: %s", drawn.Name, capturedNames(drawnCaptured)))
-			} else {
-				u.addLog(fmt.Sprintf("CPU山札: %s -> 場へ", drawn.Name))
-			}
+	newYaku := u.game.CheckNewYaku(false)
+	if len(newYaku) > 0 {
+		for _, y := range newYaku {
+			u.addLog(fmt.Sprintf("CPU * %s (%d文)", y.Name, y.Points))
 		}
-
-		newYaku := u.game.CheckNewYaku(false)
-		if len(newYaku) > 0 {
-			for _, y := range newYaku {
-				u.addLog(fmt.Sprintf("CPU * %s (%d文)", y.Name, y.Points))
-			}
-			if len(u.game.CPUHand) > 0 && CPUDecideKoiKoi(u.game, CheckYaku(u.game.CPUCaptured), u.difficulty) {
-				u.addLog("CPU: こいこい！")
-				u.game.CPUKoiKoi = true
-				u.game.UpdatePrevYaku(false)
-			} else {
-				finalScore := u.game.CalcFinalScore(false)
-				u.game.CPUScore += finalScore
-				u.addLog(fmt.Sprintf("CPU: 勝負！ %d文獲得", finalScore))
-				u.game.NextParentIsPlayer = false
-				u.finishRound(g)
-				return nil
-			}
-		}
-
-		u.game.IsPlayerTurn = true
-		if u.game.IsRoundOver() {
-			u.addLog("手札が尽きました。引き分けです。")
+		if len(u.game.CPUHand) > 0 && CPUDecideKoiKoi(u.game, CheckYaku(u.game.CPUCaptured), u.difficulty) {
+			u.addLog("CPU: こいこい！")
+			u.game.CPUKoiKoi = true
+			u.game.UpdatePrevYaku(false)
+		} else {
+			finalScore := u.game.CalcFinalScore(false)
+			u.game.CPUScore += finalScore
+			u.addLog(fmt.Sprintf("CPU: 勝負！ %d文獲得", finalScore))
+			u.game.NextParentIsPlayer = false
 			u.finishRound(g)
 			return nil
 		}
-		u.cursor = 0
-		u.phase = PhasePlayerSelectHand
+	}
+
+	u.game.IsPlayerTurn = true
+	if u.game.IsRoundOver() {
+		u.addLog("手札が尽きました。引き分けです。")
+		u.finishRound(g)
 		return nil
-	})
+	}
+	u.cursor = 0
+	u.phase = PhasePlayerSelectHand
+	return nil
 }
 
 func capturedNames(cards []Card) string {
