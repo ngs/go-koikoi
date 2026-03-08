@@ -1,16 +1,14 @@
 package main
 
-import "math/rand"
-
 // CPUChooseHandCard CPUが出す手札を選ぶ
-func CPUChooseHandCard(g *Game, diff Difficulty) (Card, *Card) {
+func CPUChooseHandCard(g *Game, diff Difficulty) (handCard Card, fieldCard *Card) {
 	// Easy: 一定確率でランダムに選ぶ
-	if diff == DifficultyEasy && rand.Intn(3) == 0 {
-		idx := rand.Intn(len(g.CPUHand))
+	if diff == DifficultyEasy && cryptoIntn(3) == 0 {
+		idx := cryptoIntn(len(g.CPUHand))
 		hand := g.CPUHand[idx]
 		matches := g.MatchingFieldCards(hand)
 		if len(matches) == 2 {
-			chosen := matches[rand.Intn(2)]
+			chosen := matches[cryptoIntn(2)]
 			return hand, &chosen
 		}
 		return hand, nil
@@ -40,7 +38,7 @@ func CPUChooseHandCard(g *Game, diff Difficulty) (Card, *Card) {
 		}
 	}
 
-	handCard := g.CPUHand[bestHandIdx]
+	handCard = g.CPUHand[bestHandIdx]
 
 	// マッチがない場合、一番価値の低い札を捨てる
 	if len(g.MatchingFieldCards(handCard)) == 0 {

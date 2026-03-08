@@ -8,22 +8,22 @@ import (
 
 // SaveData ゲーム進捗保存データ
 type SaveData struct {
-	Round          int        `json:"round"`
-	MaxRounds      int        `json:"max_rounds"`
-	PlayerScore    int        `json:"player_score"`
-	CPUScore       int        `json:"cpu_score"`
-	DeckIDs        []int      `json:"deck_ids"`
-	FieldIDs       []int      `json:"field_ids"`
-	PlayerHandIDs  []int      `json:"player_hand_ids"`
-	CPUHandIDs     []int      `json:"cpu_hand_ids"`
-	PlayerCapIDs   []int      `json:"player_captured_ids"`
-	CPUCapIDs      []int      `json:"cpu_captured_ids"`
-	IsPlayerTurn   bool       `json:"is_player_turn"`
-	PlayerKoiKoi   bool       `json:"player_koikoi"`
+	Round              int        `json:"round"`
+	MaxRounds          int        `json:"max_rounds"`
+	PlayerScore        int        `json:"player_score"`
+	CPUScore           int        `json:"cpu_score"`
+	DeckIDs            []int      `json:"deck_ids"`
+	FieldIDs           []int      `json:"field_ids"`
+	PlayerHandIDs      []int      `json:"player_hand_ids"`
+	CPUHandIDs         []int      `json:"cpu_hand_ids"`
+	PlayerCapIDs       []int      `json:"player_captured_ids"`
+	CPUCapIDs          []int      `json:"cpu_captured_ids"`
+	IsPlayerTurn       bool       `json:"is_player_turn"`
+	PlayerKoiKoi       bool       `json:"player_koikoi"`
 	CPUKoiKoi          bool       `json:"cpu_koikoi"`
 	NextParentIsPlayer bool       `json:"next_parent_is_player"`
 	Difficulty         Difficulty `json:"difficulty"`
-	LogLines       []string   `json:"log_lines"`
+	LogLines           []string   `json:"log_lines"`
 }
 
 func cardIDsFromSlice(cards []Card) []int {
@@ -46,38 +46,38 @@ func cardsFromIDs(ids []int) []Card {
 
 func GameToSaveData(g *Game, difficulty Difficulty, logLines []string) SaveData {
 	return SaveData{
-		Round:         g.Round,
-		MaxRounds:     g.MaxRounds,
-		PlayerScore:   g.PlayerScore,
-		CPUScore:      g.CPUScore,
-		DeckIDs:       cardIDsFromSlice(g.Deck),
-		FieldIDs:      cardIDsFromSlice(g.Field),
-		PlayerHandIDs: cardIDsFromSlice(g.PlayerHand),
-		CPUHandIDs:    cardIDsFromSlice(g.CPUHand),
-		PlayerCapIDs:  cardIDsFromSlice(g.PlayerCaptured),
-		CPUCapIDs:     cardIDsFromSlice(g.CPUCaptured),
-		IsPlayerTurn:  g.IsPlayerTurn,
+		Round:              g.Round,
+		MaxRounds:          g.MaxRounds,
+		PlayerScore:        g.PlayerScore,
+		CPUScore:           g.CPUScore,
+		DeckIDs:            cardIDsFromSlice(g.Deck),
+		FieldIDs:           cardIDsFromSlice(g.Field),
+		PlayerHandIDs:      cardIDsFromSlice(g.PlayerHand),
+		CPUHandIDs:         cardIDsFromSlice(g.CPUHand),
+		PlayerCapIDs:       cardIDsFromSlice(g.PlayerCaptured),
+		CPUCapIDs:          cardIDsFromSlice(g.CPUCaptured),
+		IsPlayerTurn:       g.IsPlayerTurn,
 		PlayerKoiKoi:       g.PlayerKoiKoi,
 		CPUKoiKoi:          g.CPUKoiKoi,
 		NextParentIsPlayer: g.NextParentIsPlayer,
 		Difficulty:         difficulty,
-		LogLines:      logLines,
+		LogLines:           logLines,
 	}
 }
 
-func SaveDataToGame(sd SaveData) *Game {
+func SaveDataToGame(sd *SaveData) *Game {
 	g := &Game{
-		Round:          sd.Round,
-		MaxRounds:      sd.MaxRounds,
-		PlayerScore:    sd.PlayerScore,
-		CPUScore:       sd.CPUScore,
-		Deck:           cardsFromIDs(sd.DeckIDs),
-		Field:          cardsFromIDs(sd.FieldIDs),
-		PlayerHand:     cardsFromIDs(sd.PlayerHandIDs),
-		CPUHand:        cardsFromIDs(sd.CPUHandIDs),
-		PlayerCaptured: cardsFromIDs(sd.PlayerCapIDs),
-		CPUCaptured:    cardsFromIDs(sd.CPUCapIDs),
-		IsPlayerTurn:   sd.IsPlayerTurn,
+		Round:              sd.Round,
+		MaxRounds:          sd.MaxRounds,
+		PlayerScore:        sd.PlayerScore,
+		CPUScore:           sd.CPUScore,
+		Deck:               cardsFromIDs(sd.DeckIDs),
+		Field:              cardsFromIDs(sd.FieldIDs),
+		PlayerHand:         cardsFromIDs(sd.PlayerHandIDs),
+		CPUHand:            cardsFromIDs(sd.CPUHandIDs),
+		PlayerCaptured:     cardsFromIDs(sd.PlayerCapIDs),
+		CPUCaptured:        cardsFromIDs(sd.CPUCapIDs),
+		IsPlayerTurn:       sd.IsPlayerTurn,
 		PlayerKoiKoi:       sd.PlayerKoiKoi,
 		CPUKoiKoi:          sd.CPUKoiKoi,
 		NextParentIsPlayer: sd.NextParentIsPlayer,
@@ -85,18 +85,19 @@ func SaveDataToGame(sd SaveData) *Game {
 	return g
 }
 
-func SaveGame(path string, sd SaveData) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+func SaveGame(path string, sd *SaveData) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(sd, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 func LoadGame(path string) (SaveData, error) {
+	path = filepath.Clean(path)
 	var sd SaveData
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -109,5 +110,5 @@ func LoadGame(path string) (SaveData, error) {
 }
 
 func DeleteSave(path string) {
-	os.Remove(path)
+	_ = os.Remove(path)
 }

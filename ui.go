@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ const (
 type Phase int
 
 const (
-	PhasePlayerSelectHand      Phase = iota
+	PhasePlayerSelectHand Phase = iota
 	PhasePlayerSelectField
 	PhasePlayerDrawResult
 	PhasePlayerSelectFieldDraw
@@ -40,17 +41,17 @@ type UI struct {
 	logLines      []string
 	koikoiCursor  int
 	newYaku       []Yaku
-	showLog       bool // 行動履歴ポップアップ表示
-	showHelp      bool // ヘルプポップアップ表示
-	showOptions   bool // オプションポップアップ表示
-	showQuitConf  bool // 終了確認ポップアップ表示
-	quitCursor    int  // 終了確認カーソル (0=はい, 1=いいえ)
-	optCursor     int  // オプション画面のカーソル位置 (0=ラウンド, 1=難易度, 2=ボタン行)
-	optBtnCursor  int  // オプションボタンカーソル (0=キャンセル, 1=適用)
-	optRounds     int  // オプション: ラウンド数
+	showLog       bool       // 行動履歴ポップアップ表示
+	showHelp      bool       // ヘルプポップアップ表示
+	showOptions   bool       // オプションポップアップ表示
+	showQuitConf  bool       // 終了確認ポップアップ表示
+	quitCursor    int        // 終了確認カーソル (0=はい, 1=いいえ)
+	optCursor     int        // オプション画面のカーソル位置 (0=ラウンド, 1=難易度, 2=ボタン行)
+	optBtnCursor  int        // オプションボタンカーソル (0=キャンセル, 1=適用)
+	optRounds     int        // オプション: ラウンド数
 	optDifficulty Difficulty // オプション: 難易度
-	showOptConf   bool // オプション適用確認ポップアップ
-	optConfCursor int  // 適用確認カーソル (0=はい, 1=いいえ)
+	showOptConf   bool       // オプション適用確認ポップアップ
+	optConfCursor int        // 適用確認カーソル (0=はい, 1=いいえ)
 
 	// 設定・保存パス
 	configDir    string
@@ -76,7 +77,7 @@ func (u *UI) addLog(msg string) {
 
 func (u *UI) autoSave() {
 	sd := GameToSaveData(u.game, u.difficulty, u.logLines)
-	SaveGame(u.savePath, sd)
+	_ = SaveGame(u.savePath, &sd)
 }
 
 func (u *UI) Run() error {
@@ -115,7 +116,7 @@ func setOverlayTitle(g *gocui.Gui, name string, x0, y0, x1 int, title string) {
 		tx1 = x1 - 1
 	}
 	v, err := g.SetView(viewName, x0+1, y0-1, tx1, y0+1, 1)
-	if err != nil && err != gocui.ErrUnknownView {
+	if err != nil && !errors.Is(err, gocui.ErrUnknownView) {
 		return
 	}
 	v.Frame = false
@@ -175,16 +176,11 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 	// 右カラムは獲得札の内容に応じて動的にサイズ変更
 	cpuCapLines := countCapturedGroups(u.game.CPUCaptured) + 2 // 前後空白行
-	cpuCapH := cpuCapLines + 2                                  // フレーム分
+	cpuCapH := cpuCapLines + 2                                 // フレーム分
 	if cpuCapH < 4 {
 		cpuCapH = 4
 	}
 	deckH := 5
-	bodyH := bodyBot - bodyTop + 1
-	myCapH := bodyH - cpuCapH - deckH + 2 // フレーム共有分
-	if myCapH < 4 {
-		myCapH = 4
-	}
 
 	rCpuCap := R{leftW - 1, bodyTop - 1, maxX, bodyTop - 1 + cpuCapH}
 	rDeck := R{leftW - 1, rCpuCap.y1 - 1, maxX, rCpuCap.y1 - 1 + deckH}
@@ -194,16 +190,16 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 	// --- ヘッダー ---
 	if v, err := g.SetView("header", rHeader.x0, rHeader.y0, rHeader.x1, rHeader.y1, 0); err != nil {
-		if err != gocui.ErrUnknownView {
+		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 		v.Frame = true
 	}
-	u.drawHeader(g, rHeader.x0, rHeader.y0, rHeader.x1)
+	u.drawHeader(g)
 
 	// --- CPU (左上) ---
 	if v, err := g.SetView("cpu", rCPU.x0, rCPU.y0, rCPU.x1, rCPU.y1, 0); err != nil {
-		if err != gocui.ErrUnknownView {
+		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 		v.Frame = true
@@ -213,7 +209,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 	// --- 場札 (左中) ---
 	if v, err := g.SetView("field", rField.x0, rField.y0, rField.x1, rField.y1, 0); err != nil {
-		if err != gocui.ErrUnknownView {
+		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 		v.Frame = true
@@ -223,7 +219,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 	// --- 手札 (左下) ---
 	if v, err := g.SetView("hand", rHand.x0, rHand.y0, rHand.x1, rHand.y1, 0); err != nil {
-		if err != gocui.ErrUnknownView {
+		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 		v.Frame = true
@@ -232,7 +228,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 	// --- CPU獲得札 (右上) ---
 	if v, err := g.SetView("cpucap", rCpuCap.x0, rCpuCap.y0, rCpuCap.x1, rCpuCap.y1, 0); err != nil {
-		if err != gocui.ErrUnknownView {
+		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 		v.Frame = true
@@ -243,7 +239,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 	// --- 山札 (右中) ---
 	if v, err := g.SetView("deck", rDeck.x0, rDeck.y0, rDeck.x1, rDeck.y1, 0); err != nil {
-		if err != gocui.ErrUnknownView {
+		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 		v.Frame = true
@@ -253,7 +249,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 	// --- 自分の獲得札 (右下) ---
 	if v, err := g.SetView("mycap", rMyCap.x0, rMyCap.y0, rMyCap.x1, rMyCap.y1, 0); err != nil {
-		if err != gocui.ErrUnknownView {
+		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 		v.Frame = true
@@ -264,7 +260,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 	// --- ステータスバー ---
 	if v, err := g.SetView("status", rStatus.x0, rStatus.y0, rStatus.x1, rStatus.y1, 0); err != nil {
-		if err != gocui.ErrUnknownView {
+		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 		v.Frame = true
@@ -278,7 +274,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 		px0 := (maxX - pw) / 2
 		py0 := (maxY - ph) / 2
 		if v, err := g.SetView("log", px0, py0, px0+pw, py0+ph, 0); err != nil {
-			if err != gocui.ErrUnknownView {
+			if !errors.Is(err, gocui.ErrUnknownView) {
 				return err
 			}
 			v.Frame = true
@@ -289,8 +285,8 @@ func (u *UI) layout(g *gocui.Gui) error {
 		setOverlayTitle(g, "log", px0, py0, px0+pw, " 行動履歴 (lキーで閉じる) ")
 		u.drawLog(g)
 	} else {
-		g.DeleteView("log")
-		g.DeleteView("log_t")
+		_ = g.DeleteView("log")
+		_ = g.DeleteView("log_t")
 	}
 
 	// --- ヘルプポップアップ ---
@@ -300,7 +296,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 		px0 := (maxX - pw) / 2
 		py0 := (maxY - ph) / 2
 		if v, err := g.SetView("help", px0, py0, px0+pw, py0+ph, 0); err != nil {
-			if err != gocui.ErrUnknownView {
+			if !errors.Is(err, gocui.ErrUnknownView) {
 				return err
 			}
 			v.Frame = true
@@ -309,8 +305,8 @@ func (u *UI) layout(g *gocui.Gui) error {
 		setOverlayTitle(g, "help", px0, py0, px0+pw, " ヘルプ (?キーで閉じる) ")
 		u.drawHelp(g)
 	} else {
-		g.DeleteView("help")
-		g.DeleteView("help_t")
+		_ = g.DeleteView("help")
+		_ = g.DeleteView("help_t")
 	}
 
 	// --- オプションポップアップ ---
@@ -320,7 +316,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 		px0 := (maxX - pw) / 2
 		py0 := (maxY - ph) / 2
 		if v, err := g.SetView("options", px0, py0, px0+pw, py0+ph, 0); err != nil {
-			if err != gocui.ErrUnknownView {
+			if !errors.Is(err, gocui.ErrUnknownView) {
 				return err
 			}
 			v.Frame = true
@@ -329,8 +325,8 @@ func (u *UI) layout(g *gocui.Gui) error {
 		setOverlayTitle(g, "options", px0, py0, px0+pw, " オプション (Escで閉じる) ")
 		u.drawOptions(g)
 	} else {
-		g.DeleteView("options")
-		g.DeleteView("options_t")
+		_ = g.DeleteView("options")
+		_ = g.DeleteView("options_t")
 	}
 
 	// --- 終了確認ポップアップ ---
@@ -340,7 +336,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 		px0 := (maxX - pw) / 2
 		py0 := (maxY - ph) / 2
 		if v, err := g.SetView("quitconf", px0, py0, px0+pw, py0+ph, 0); err != nil {
-			if err != gocui.ErrUnknownView {
+			if !errors.Is(err, gocui.ErrUnknownView) {
 				return err
 			}
 			v.Frame = true
@@ -349,8 +345,8 @@ func (u *UI) layout(g *gocui.Gui) error {
 		setOverlayTitle(g, "quitconf", px0, py0, px0+pw, " 終了確認 ")
 		u.drawQuitConf(g)
 	} else {
-		g.DeleteView("quitconf")
-		g.DeleteView("quitconf_t")
+		_ = g.DeleteView("quitconf")
+		_ = g.DeleteView("quitconf_t")
 	}
 
 	// --- オプション適用確認ポップアップ ---
@@ -360,7 +356,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 		px0 := (maxX - pw) / 2
 		py0 := (maxY - ph) / 2
 		if v, err := g.SetView("optconf", px0, py0, px0+pw, py0+ph, 0); err != nil {
-			if err != gocui.ErrUnknownView {
+			if !errors.Is(err, gocui.ErrUnknownView) {
 				return err
 			}
 			v.Frame = true
@@ -369,8 +365,8 @@ func (u *UI) layout(g *gocui.Gui) error {
 		setOverlayTitle(g, "optconf", px0, py0, px0+pw, " 確認 ")
 		u.drawOptConf(g)
 	} else {
-		g.DeleteView("optconf")
-		g.DeleteView("optconf_t")
+		_ = g.DeleteView("optconf")
+		_ = g.DeleteView("optconf_t")
 	}
 
 	if u.phase == PhaseCPUTurn {
@@ -382,7 +378,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 // ---- 描画 ----
 
-func (u *UI) drawHeader(g *gocui.Gui, x0, y0, x1 int) {
+func (u *UI) drawHeader(g *gocui.Gui) {
 	v, _ := g.View("header")
 	if v == nil {
 		return
@@ -438,11 +434,12 @@ func (u *UI) drawField(g *gocui.Gui) {
 				}
 			}
 			label := cardLabel(c)
-			if isMatch && mIdx == u.fieldCursor {
+			switch {
+			case isMatch && mIdx == u.fieldCursor:
 				cards = append(cards, ansiReverse+label+ansiReset)
-			} else if isMatch {
+			case isMatch:
 				cards = append(cards, ansiYellow+label+ansiReset)
-			} else {
+			default:
 				cards = append(cards, ansiDim+label+ansiReset)
 			}
 		}
@@ -560,11 +557,12 @@ func (u *UI) drawHand(g *gocui.Gui, x0, y0, x1 int) {
 		fmt.Fprintf(v, "  あなた: %d文\n", u.game.PlayerScore)
 		fmt.Fprintf(v, "  CPU   : %d文\n", u.game.CPUScore)
 		fmt.Fprintln(v)
-		if u.game.PlayerScore > u.game.CPUScore {
+		switch {
+		case u.game.PlayerScore > u.game.CPUScore:
 			fmt.Fprintln(v, "  あなたの勝ちです！おめでとうございます！")
-		} else if u.game.PlayerScore < u.game.CPUScore {
+		case u.game.PlayerScore < u.game.CPUScore:
 			fmt.Fprintln(v, "  CPUの勝ちです。次は頑張りましょう！")
-		} else {
+		default:
 			fmt.Fprintln(v, "  引き分けです！")
 		}
 		fmt.Fprintln(v)
@@ -799,12 +797,12 @@ func (u *UI) drawOptConf(g *gocui.Gui) {
 	fmt.Fprintln(v, centerPad("←/→:選択  Enter:決定  Esc:戻る", innerW))
 }
 
-func (u *UI) applyOptions(g *gocui.Gui) error {
+func (u *UI) applyOptions() error {
 	// 設定を保存
 	u.settings.Rounds = u.optRounds
 	u.settings.Difficulty = u.optDifficulty
 	u.difficulty = u.optDifficulty
-	SaveSettings(u.settingsPath, u.settings)
+	_ = SaveSettings(u.settingsPath, u.settings)
 
 	// セーブデータ削除（リスタート）
 	DeleteSave(u.savePath)
@@ -1115,7 +1113,6 @@ func (u *UI) handleDown(_ *gocui.Gui, _ *gocui.View) error {
 	return nil
 }
 
-
 func (u *UI) handleLeft(_ *gocui.Gui, _ *gocui.View) error {
 	if u.showOptConf {
 		if u.optConfCursor > 0 {
@@ -1225,7 +1222,7 @@ func (u *UI) handleEnter(g *gocui.Gui, _ *gocui.View) error {
 	if u.showOptConf {
 		if u.optConfCursor == 0 {
 			// はい → 適用してリスタート
-			return u.applyOptions(g)
+			return u.applyOptions()
 		}
 		// いいえ → 確認ダイアログだけ閉じる
 		u.showOptConf = false
@@ -1490,7 +1487,7 @@ func (u *UI) doCPUTurn(g *gocui.Gui) {
 }
 
 func capturedNames(cards []Card) string {
-	var names []string
+	names := make([]string, 0, len(cards))
 	for _, c := range cards {
 		names = append(names, c.Name)
 	}

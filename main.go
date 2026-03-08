@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -32,7 +33,7 @@ func main() {
 
 	// セーブデータがあれば復元
 	if sd, err := LoadGame(savePath); err == nil {
-		ui.game = SaveDataToGame(sd)
+		ui.game = SaveDataToGame(&sd)
 		ui.logLines = sd.LogLines
 		ui.difficulty = sd.Difficulty
 		ui.phase = PhasePlayerSelectHand
@@ -50,7 +51,7 @@ func main() {
 		}
 	}
 
-	if err := ui.Run(); err != nil && err != gocui.ErrQuit {
+	if err := ui.Run(); err != nil && !errors.Is(err, gocui.ErrQuit) {
 		fmt.Fprintf(os.Stderr, "エラー: %v\n", err)
 		os.Exit(1)
 	}

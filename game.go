@@ -1,8 +1,14 @@
 package main
 
 import (
-	"math/rand"
+	"crypto/rand"
+	"math/big"
 )
+
+func cryptoIntn(n int) int {
+	v, _ := rand.Int(rand.Reader, big.NewInt(int64(n)))
+	return int(v.Int64())
+}
 
 // Game ゲーム状態
 type Game struct {
@@ -42,9 +48,10 @@ func (g *Game) StartRound() {
 	// デッキ作成・シャッフル
 	g.Deck = make([]Card, len(AllCards))
 	copy(g.Deck, AllCards)
-	rand.Shuffle(len(g.Deck), func(i, j int) {
+	for i := len(g.Deck) - 1; i > 0; i-- {
+		j := cryptoIntn(i + 1)
 		g.Deck[i], g.Deck[j] = g.Deck[j], g.Deck[i]
-	})
+	}
 
 	g.PlayerHand = nil
 	g.CPUHand = nil
@@ -108,25 +115,26 @@ func (g *Game) PlayCard(handCard Card, fieldChoice *Card, isPlayer bool) []Card 
 	matches := g.MatchingFieldCards(handCard)
 
 	var captured []Card
-	if len(matches) == 0 {
+	switch {
+	case len(matches) == 0:
 		// マッチなし → 場に置く
 		g.Field = append(g.Field, handCard)
-	} else if len(matches) == 1 {
+	case len(matches) == 1:
 		// 1枚マッチ → 獲得
 		captured = append(captured, handCard, matches[0])
 		g.Field = removeCard(g.Field, matches[0])
-	} else if len(matches) == 2 && fieldChoice != nil {
+	case len(matches) == 2 && fieldChoice != nil:
 		// 2枚マッチ → 選択した1枚を獲得
 		captured = append(captured, handCard, *fieldChoice)
 		g.Field = removeCard(g.Field, *fieldChoice)
-	} else if len(matches) == 3 {
+	case len(matches) == 3:
 		// 3枚マッチ → 全て獲得
 		captured = append(captured, handCard)
 		for _, m := range matches {
 			captured = append(captured, m)
 			g.Field = removeCard(g.Field, m)
 		}
-	} else if len(matches) == 2 {
+	case len(matches) == 2:
 		// 2枚マッチでfieldChoice未指定 → 最初の1枚
 		captured = append(captured, handCard, matches[0])
 		g.Field = removeCard(g.Field, matches[0])
@@ -146,21 +154,22 @@ func (g *Game) PlayDrawnCard(drawnCard Card, fieldChoice *Card, isPlayer bool) [
 	matches := g.MatchingFieldCards(drawnCard)
 
 	var captured []Card
-	if len(matches) == 0 {
+	switch {
+	case len(matches) == 0:
 		g.Field = append(g.Field, drawnCard)
-	} else if len(matches) == 1 {
+	case len(matches) == 1:
 		captured = append(captured, drawnCard, matches[0])
 		g.Field = removeCard(g.Field, matches[0])
-	} else if len(matches) == 2 && fieldChoice != nil {
+	case len(matches) == 2 && fieldChoice != nil:
 		captured = append(captured, drawnCard, *fieldChoice)
 		g.Field = removeCard(g.Field, *fieldChoice)
-	} else if len(matches) == 3 {
+	case len(matches) == 3:
 		captured = append(captured, drawnCard)
 		for _, m := range matches {
 			captured = append(captured, m)
 			g.Field = removeCard(g.Field, m)
 		}
-	} else if len(matches) == 2 {
+	case len(matches) == 2:
 		captured = append(captured, drawnCard, matches[0])
 		g.Field = removeCard(g.Field, matches[0])
 	}

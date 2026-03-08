@@ -47,6 +47,7 @@ func DefaultBaseDir() string {
 }
 
 func LoadSettings(path string) (Settings, error) {
+	path = filepath.Clean(path)
 	s := DefaultSettings()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -65,12 +66,12 @@ func LoadSettings(path string) (Settings, error) {
 }
 
 func SaveSettings(path string, s Settings) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o600)
 }

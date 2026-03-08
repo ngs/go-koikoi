@@ -29,13 +29,14 @@ func CheckYaku(captured []Card) []Yaku {
 	hasAmeSikou := !hasGokou && !hasSikou && contains(hikariIDs, 40) && len(hikari) >= 4
 	hasSankou := !hasGokou && !hasSikou && !hasAmeSikou && hikariNoYanagi >= 3
 
-	if hasGokou {
+	switch {
+	case hasGokou:
 		yakus = append(yakus, Yaku{"五光", 10})
-	} else if hasSikou {
+	case hasSikou:
 		yakus = append(yakus, Yaku{"四光", 8})
-	} else if hasAmeSikou {
+	case hasAmeSikou:
 		yakus = append(yakus, Yaku{"雨四光", 7})
-	} else if hasSankou {
+	case hasSankou:
 		yakus = append(yakus, Yaku{"三光", 5})
 	}
 
@@ -61,22 +62,23 @@ func CheckYaku(captured []Card) []Yaku {
 	// 短冊系（排他: 赤短・青短の重複 > 赤短/青短 > タン）
 	tanzakuIDs := cardIDs(tanzaku)
 	hasAkatan := containsAll(tanzakuIDs, 1, 5, 9)   // 松・梅・桜の赤短
-	hasAotan := containsAll(tanzakuIDs, 21, 33, 37)  // 牡丹・菊・紅葉の青短
+	hasAotan := containsAll(tanzakuIDs, 21, 33, 37) // 牡丹・菊・紅葉の青短
 
-	if hasAkatan && hasAotan {
+	switch {
+	case hasAkatan && hasAotan:
 		// 赤短・青短の重複: 10文 + 短冊が増えるごとに+1文
 		extra := len(tanzaku) - 6
 		if extra < 0 {
 			extra = 0
 		}
 		yakus = append(yakus, Yaku{"赤短・青短の重複", 10 + extra})
-	} else if hasAkatan {
+	case hasAkatan:
 		extra := len(tanzaku) - 3
 		if extra < 0 {
 			extra = 0
 		}
 		yakus = append(yakus, Yaku{"赤短", 5 + extra})
-	} else if hasAotan {
+	case hasAotan:
 		extra := len(tanzaku) - 3
 		if extra < 0 {
 			extra = 0

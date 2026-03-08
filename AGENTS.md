@@ -3,6 +3,24 @@
 Go 製の CUI 花札こいこいゲーム（任天堂ルール準拠）。
 TUI フレームワークに `github.com/awesome-gocui/gocui` を使用。
 
+- リポジトリ: https://github.com/ngs/go-koikoi
+- モジュール: `go.ngs.io/koikoi`
+
+## インストール
+
+### Go
+
+```bash
+go install go.ngs.io/koikoi@latest
+```
+
+### Homebrew
+
+```bash
+brew tap ngs/tap
+brew install ngs/tap/koikoi
+```
+
 ## プロジェクト構成
 
 | ファイル | 概要 |

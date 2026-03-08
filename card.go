@@ -22,10 +22,10 @@ const (
 type CardType int
 
 const (
-	Kasu   CardType = iota // カス
-	Tane                   // タネ
-	Tanzaku                // 短冊
-	Hikari                 // 光
+	Kasu    CardType = iota // カス
+	Tane                    // タネ
+	Tanzaku                 // 短冊
+	Hikari                  // 光
 )
 
 // Card 花札1枚
