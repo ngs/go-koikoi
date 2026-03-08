@@ -2,7 +2,7 @@
 
 Go 製の CUI 花札こいこいゲーム（任天堂ルール準拠）。
 
-![Screenshot](./docs/screenshot.jpg)
+![Screenshot](https://github.com/ngs/go-koikoi/raw/master/docs/screenshot.jpg)
 
 ## インストール
 
