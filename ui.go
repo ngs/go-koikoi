@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -30,6 +31,12 @@ const (
 	PhaseGameEnd
 )
 
+const (
+	msgPlayerWin = "あなたの勝ちです！おめでとうございます！"
+	msgCPUWin    = "CPUの勝ちです。次は頑張りましょう！"
+	msgDraw      = "引き分けです！"
+)
+
 type UI struct {
 	gui           *gocui.Gui
 	game          *Game
@@ -41,7 +48,10 @@ type UI struct {
 	drawnCard     Card
 	logLines      []string
 	koikoiCursor  int
+	gameEndCursor int // ゲーム終了ダイアログ (0=1月から, 1=終了する)
 	newYaku       []Yaku
+	roundResult   string     // ラウンド結果メッセージ
+	gameResult    string     // ゲーム終了結果メッセージ
 	showLog       bool       // 行動履歴ポップアップ表示
 	showHelp      bool       // ヘルプポップアップ表示
 	showOptions   bool       // オプションポップアップ表示
@@ -65,6 +75,49 @@ type UI struct {
 func NewUI() *UI {
 	return &UI{
 		logLines: nil,
+	}
+}
+
+// Init は設定・セーブデータを読み込み、ゲームの初期状態をセットアップする。
+func (u *UI) Init(configDir string) {
+	u.configDir = configDir
+	u.settingsPath = filepath.Join(configDir, "settings.json")
+	u.savePath = filepath.Join(configDir, "game.json")
+	u.settings, _ = LoadSettings(u.settingsPath)
+	u.difficulty = u.settings.Difficulty
+
+	if sd, err := LoadGame(u.savePath); err == nil {
+		u.restoreSave(&sd)
+	} else {
+		u.newGame(u.settings.Rounds)
+	}
+}
+
+func (u *UI) restoreSave(sd *SaveData) {
+	u.game = SaveDataToGame(sd)
+	u.logLines = sd.LogLines
+	u.difficulty = sd.Difficulty
+	if u.game.Round > u.game.MaxRounds {
+		// 旧バージョンのセーブデータ（ゲーム終了状態）は破棄して新規開始
+		DeleteSave(u.savePath)
+		u.newGame(u.settings.Rounds)
+		return
+	}
+	u.addLog("--- セーブデータを復元しました ---")
+	u.setInitialPhase()
+}
+
+func (u *UI) newGame(rounds int) {
+	u.game = NewGame(rounds)
+	u.game.StartRound()
+	u.addLog(fmt.Sprintf("--- %s 開始 ---", u.roundName()))
+	u.setInitialPhase()
+}
+
+func (u *UI) setInitialPhase() {
+	u.phase = PhasePlayerSelectHand
+	if !u.game.IsPlayerTurn {
+		u.phase = PhaseCPUTurn
 	}
 }
 
@@ -98,7 +151,6 @@ func (u *UI) Run() error {
 		return err
 	}
 
-	// phase は main.go で設定済み
 	return g.MainLoop()
 }
 
@@ -112,10 +164,7 @@ func (u *UI) roundName() string {
 func setOverlayTitle(g *gocui.Gui, name string, x0, y0, x1 int, title string) {
 	viewName := name + "_t"
 	w := cellWidth(title)
-	tx1 := x0 + 2 + w
-	if tx1 > x1-1 {
-		tx1 = x1 - 1
-	}
+	tx1 := min(x0+2+w, x1-1)
 	v, err := g.SetView(viewName, x0+1, y0-1, tx1, y0+1, 1)
 	if err != nil && !errors.Is(err, gocui.ErrUnknownView) {
 		return
@@ -177,10 +226,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 
 	// 右カラムは獲得札の内容に応じて動的にサイズ変更
 	cpuCapLines := countCapturedGroups(u.game.CPUCaptured) + 2 // 前後空白行
-	cpuCapH := cpuCapLines + 2                                 // フレーム分
-	if cpuCapH < 4 {
-		cpuCapH = 4
-	}
+	cpuCapH := max(cpuCapLines+2, 4)                           // フレーム分
 	deckH := 5
 
 	rCpuCap := R{leftW - 1, bodyTop - 1, maxX, bodyTop - 1 + cpuCapH}
@@ -370,6 +416,67 @@ func (u *UI) layout(g *gocui.Gui) error {
 		_ = g.DeleteView("optconf_t")
 	}
 
+	// --- こいこいポップアップ ---
+	if u.phase == PhaseKoiKoi {
+		pw := 44
+		yakuCount := len(u.newYaku)
+		ph := 10 + yakuCount // header + yakus + total + buttons + footer
+		px0 := (maxX - pw) / 2
+		py0 := (maxY - ph) / 2
+		if v, err := g.SetView("koikoi", px0, py0, px0+pw, py0+ph, 0); err != nil {
+			if !errors.Is(err, gocui.ErrUnknownView) {
+				return err
+			}
+			v.Frame = true
+			v.FrameRunes = []rune{'━', '┃', '┏', '┓', '┗', '┛', '┏', '┓', '┏', '┗', '┏'}
+		}
+		setOverlayTitle(g, "koikoi", px0, py0, px0+pw, " こいこい？ ")
+		u.drawKoiKoi(g)
+	} else {
+		_ = g.DeleteView("koikoi")
+		_ = g.DeleteView("koikoi_t")
+	}
+
+	// --- ラウンド終了ポップアップ ---
+	if u.phase == PhaseRoundEnd {
+		pw := 44
+		ph := 11
+		px0 := (maxX - pw) / 2
+		py0 := (maxY - ph) / 2
+		if v, err := g.SetView("roundend", px0, py0, px0+pw, py0+ph, 0); err != nil {
+			if !errors.Is(err, gocui.ErrUnknownView) {
+				return err
+			}
+			v.Frame = true
+			v.FrameRunes = []rune{'━', '┃', '┏', '┓', '┗', '┛', '┏', '┓', '┏', '┗', '┏'}
+		}
+		setOverlayTitle(g, "roundend", px0, py0, px0+pw, " ラウンド終了 ")
+		u.drawRoundEnd(g)
+	} else {
+		_ = g.DeleteView("roundend")
+		_ = g.DeleteView("roundend_t")
+	}
+
+	// --- ゲーム終了ポップアップ ---
+	if u.phase == PhaseGameEnd {
+		pw := 44
+		ph := 13
+		px0 := (maxX - pw) / 2
+		py0 := (maxY - ph) / 2
+		if v, err := g.SetView("gameend", px0, py0, px0+pw, py0+ph, 0); err != nil {
+			if !errors.Is(err, gocui.ErrUnknownView) {
+				return err
+			}
+			v.Frame = true
+			v.FrameRunes = []rune{'━', '┃', '┏', '┓', '┗', '┛', '┏', '┓', '┏', '┗', '┏'}
+		}
+		setOverlayTitle(g, "gameend", px0, py0, px0+pw, " ゲーム終了 ")
+		u.drawGameEnd(g)
+	} else {
+		_ = g.DeleteView("gameend")
+		_ = g.DeleteView("gameend_t")
+	}
+
 	if u.phase == PhaseCPUTurn {
 		go u.doCPUTurn(g)
 	}
@@ -522,52 +629,17 @@ func (u *UI) drawHand(g *gocui.Gui, x0, y0, x1 int) {
 		fmt.Fprintln(v, "  Left/Right で場札を選択、Enterで決定")
 
 	case PhaseKoiKoi:
-		setOverlayTitle(g, "hand", x0, y0, x1, " こいこい？ ")
+		setOverlayTitle(g, "hand", x0, y0, x1, " 手札 ")
 		fmt.Fprintln(v)
-		fmt.Fprintln(v, "  *** 役が成立しました！ ***")
-		fmt.Fprintln(v)
-		for _, y := range u.newYaku {
-			fmt.Fprintf(v, "    %s (%d文)\n", y.Name, y.Points)
-		}
-		fmt.Fprintln(v)
-		basePoints := TotalPoints(CheckYaku(u.game.PlayerCaptured))
-		finalScore := u.game.CalcFinalScore(true)
-		if finalScore != basePoints {
-			fmt.Fprintf(v, "    合計: %d文 → %d文\n", basePoints, finalScore)
-		} else {
-			fmt.Fprintf(v, "    合計: %d文\n", basePoints)
-		}
-		fmt.Fprintln(v)
-		labels := [2]string{"  こいこい（続行）", "  勝負（得点確定）"}
-		for i, label := range labels {
-			if i == u.koikoiCursor {
-				fmt.Fprintf(v, " %s%s%s\n", ansiReverse, label, ansiReset)
-			} else {
-				fmt.Fprintf(v, " %s\n", label)
-			}
+		for _, c := range u.game.PlayerHand {
+			fmt.Fprintf(v, " %s %s\n", cardLabel(c), c.Name)
 		}
 
 	case PhaseRoundEnd:
-		setOverlayTitle(g, "hand", x0, y0, x1, " ラウンド終了 ")
-		fmt.Fprintln(v)
-		fmt.Fprintln(v, "  Enterで次の月へ")
+		setOverlayTitle(g, "hand", x0, y0, x1, " 手札 ")
 
 	case PhaseGameEnd:
-		setOverlayTitle(g, "hand", x0, y0, x1, " ゲーム終了 ")
-		fmt.Fprintln(v)
-		fmt.Fprintf(v, "  あなた: %d文\n", u.game.PlayerScore)
-		fmt.Fprintf(v, "  CPU   : %d文\n", u.game.CPUScore)
-		fmt.Fprintln(v)
-		switch {
-		case u.game.PlayerScore > u.game.CPUScore:
-			fmt.Fprintln(v, "  あなたの勝ちです！おめでとうございます！")
-		case u.game.PlayerScore < u.game.CPUScore:
-			fmt.Fprintln(v, "  CPUの勝ちです。次は頑張りましょう！")
-		default:
-			fmt.Fprintln(v, "  引き分けです！")
-		}
-		fmt.Fprintln(v)
-		fmt.Fprintln(v, "  qキーで終了")
+		setOverlayTitle(g, "hand", x0, y0, x1, " 手札 ")
 
 	default:
 		setOverlayTitle(g, "hand", x0, y0, x1, " 手札 ")
@@ -710,10 +782,7 @@ func (u *UI) drawOptions(g *gocui.Gui) {
 	}
 	btnLine := cancelLabel + "    " + applyLabel
 	btnW := cellWidth(" キャンセル ") + 4 + cellWidth(" 適用 ")
-	btnPad := (innerW - btnW) / 2
-	if btnPad < 0 {
-		btnPad = 0
-	}
+	btnPad := max((innerW-btnW)/2, 0)
 	fmt.Fprintln(v, strings.Repeat(" ", btnPad)+btnLine)
 	fmt.Fprintln(v)
 	fmt.Fprintln(v)
@@ -754,10 +823,7 @@ func (u *UI) drawQuitConf(g *gocui.Gui) {
 	btnLine := yesLabel + "    " + noLabel
 	// ボタン部分のセルの幅（ANSIエスケープを除く）
 	btnW := cellWidth(" はい ") + 4 + cellWidth(" いいえ ")
-	btnPad := (innerW - btnW) / 2
-	if btnPad < 0 {
-		btnPad = 0
-	}
+	btnPad := max((innerW-btnW)/2, 0)
 	fmt.Fprintln(v, strings.Repeat(" ", btnPad)+btnLine)
 	fmt.Fprintln(v)
 	fmt.Fprintln(v)
@@ -788,14 +854,115 @@ func (u *UI) drawOptConf(g *gocui.Gui) {
 	}
 	btnLine := yesLabel + "    " + noLabel
 	btnW := cellWidth(" はい ") + 4 + cellWidth(" いいえ ")
-	btnPad := (innerW - btnW) / 2
-	if btnPad < 0 {
-		btnPad = 0
-	}
+	btnPad := max((innerW-btnW)/2, 0)
 	fmt.Fprintln(v, strings.Repeat(" ", btnPad)+btnLine)
 	fmt.Fprintln(v)
 	fmt.Fprintln(v)
 	fmt.Fprintln(v, centerPad("←/→:選択  Enter:決定  Esc:戻る", innerW))
+}
+
+func (u *UI) drawKoiKoi(g *gocui.Gui) {
+	v, _ := g.View("koikoi")
+	if v == nil {
+		return
+	}
+	v.Clear()
+
+	innerW := 42 // pw(44) - frame(2)
+
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad("*** 役が成立しました！ ***", innerW))
+	fmt.Fprintln(v)
+	for _, y := range u.newYaku {
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("%s (%d文)", y.Name, y.Points), innerW))
+	}
+	fmt.Fprintln(v)
+	basePoints := TotalPoints(CheckYaku(u.game.PlayerCaptured))
+	finalScore := u.game.CalcFinalScore(true)
+	if finalScore != basePoints {
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("合計: %d文 → %d文", basePoints, finalScore), innerW))
+	} else {
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("合計: %d文", basePoints), innerW))
+	}
+	fmt.Fprintln(v)
+
+	koiLabel := " こいこい（続行） "
+	shoubuLabel := " 勝負（得点確定） "
+	if u.koikoiCursor == 0 {
+		koiLabel = ansiReverse + koiLabel + ansiReset
+	}
+	if u.koikoiCursor == 1 {
+		shoubuLabel = ansiReverse + shoubuLabel + ansiReset
+	}
+	btnLine := koiLabel + "  " + shoubuLabel
+	btnW := cellWidth(" こいこい（続行） ") + 2 + cellWidth(" 勝負（得点確定） ")
+	btnPad := max((innerW-btnW)/2, 0)
+	fmt.Fprintln(v, strings.Repeat(" ", btnPad)+btnLine)
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad("←/→:選択  Enter:決定", innerW))
+}
+
+func (u *UI) drawRoundEnd(g *gocui.Gui) {
+	v, _ := g.View("roundend")
+	if v == nil {
+		return
+	}
+	v.Clear()
+
+	innerW := 42 // pw(44) - frame(2)
+
+	// ラウンド番号は Round-1 (finishRound で既にインクリメント済み)
+	roundNum := u.game.Round - 1
+	m := Month((roundNum - 1) % 12)
+
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad(fmt.Sprintf("第%d局 (%s) 終了", roundNum, m.OldName()), innerW))
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad(u.roundResult, innerW))
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad(fmt.Sprintf("あなた: %d文  CPU: %d文", u.game.PlayerScore, u.game.CPUScore), innerW))
+	fmt.Fprintln(v)
+
+	nextM := Month((u.game.Round - 1) % 12)
+	btnLabel := fmt.Sprintf(" 次の月へ（%s） ", nextM.OldName())
+	btnW := cellWidth(btnLabel)
+	btnPad := max((innerW-btnW)/2, 0)
+	fmt.Fprintln(v, strings.Repeat(" ", btnPad)+ansiReverse+btnLabel+ansiReset)
+}
+
+func (u *UI) drawGameEnd(g *gocui.Gui) {
+	v, _ := g.View("gameend")
+	if v == nil {
+		return
+	}
+	v.Clear()
+
+	innerW := 42 // pw(44) - frame(2)
+
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad(fmt.Sprintf("あなた: %d文  CPU: %d文", u.game.PlayerScore, u.game.CPUScore), innerW))
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad(u.gameResult, innerW))
+	fmt.Fprintln(v)
+
+	// ラウンド結果
+	fmt.Fprintln(v, centerPad(u.roundResult, innerW))
+	fmt.Fprintln(v)
+
+	restartLabel := " 1月から "
+	quitLabel := " 終了する "
+	if u.gameEndCursor == 0 {
+		restartLabel = ansiReverse + restartLabel + ansiReset
+	}
+	if u.gameEndCursor == 1 {
+		quitLabel = ansiReverse + quitLabel + ansiReset
+	}
+	btnLine := restartLabel + "    " + quitLabel
+	btnW := cellWidth(" 1月から ") + 4 + cellWidth(" 終了する ")
+	btnPad := max((innerW-btnW)/2, 0)
+	fmt.Fprintln(v, strings.Repeat(" ", btnPad)+btnLine)
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad("←/→:選択  Enter:決定", innerW))
 }
 
 func (u *UI) applyOptions() error {
@@ -838,13 +1005,13 @@ func (u *UI) drawStatus(g *gocui.Gui) {
 	case PhasePlayerSelectField, PhasePlayerSelectFieldDraw:
 		fmt.Fprint(v, " Left/Right: 場札選択 | Enter: 決定")
 	case PhaseKoiKoi:
-		fmt.Fprint(v, " Up/Down: 選択 | Enter: 決定")
+		fmt.Fprint(v, " Left/Right: 選択 | Enter: 決定")
 	case PhaseCPUTurn:
 		fmt.Fprint(v, " CPUが考え中...")
 	case PhaseRoundEnd:
 		fmt.Fprint(v, " Enter: 次の月へ")
 	case PhaseGameEnd:
-		fmt.Fprint(v, " q: 終了")
+		fmt.Fprint(v, " Left/Right: 選択 | Enter: 決定")
 	default:
 		fmt.Fprint(v, " Enter: 続行")
 	}
@@ -1059,15 +1226,8 @@ func (u *UI) handleUp(_ *gocui.Gui, _ *gocui.View) error {
 	if u.showLog || u.showHelp {
 		return nil
 	}
-	switch u.phase {
-	case PhasePlayerSelectHand:
-		if u.cursor > 0 {
-			u.cursor--
-		}
-	case PhaseKoiKoi:
-		if u.koikoiCursor > 0 {
-			u.koikoiCursor--
-		}
+	if u.phase == PhasePlayerSelectHand && u.cursor > 0 {
+		u.cursor--
 	}
 	return nil
 }
@@ -1085,15 +1245,8 @@ func (u *UI) handleDown(_ *gocui.Gui, _ *gocui.View) error {
 	if u.showLog || u.showHelp {
 		return nil
 	}
-	switch u.phase {
-	case PhasePlayerSelectHand:
-		if u.cursor < len(u.game.PlayerHand)-1 {
-			u.cursor++
-		}
-	case PhaseKoiKoi:
-		if u.koikoiCursor < 1 {
-			u.koikoiCursor++
-		}
+	if u.phase == PhasePlayerSelectHand && u.cursor < len(u.game.PlayerHand)-1 {
+		u.cursor++
 	}
 	return nil
 }
@@ -1142,6 +1295,14 @@ func (u *UI) handleLeft(_ *gocui.Gui, _ *gocui.View) error {
 		if u.fieldCursor > 0 {
 			u.fieldCursor--
 		}
+	case PhaseKoiKoi:
+		if u.koikoiCursor > 0 {
+			u.koikoiCursor--
+		}
+	case PhaseGameEnd:
+		if u.gameEndCursor > 0 {
+			u.gameEndCursor--
+		}
 	}
 	return nil
 }
@@ -1189,6 +1350,14 @@ func (u *UI) handleRight(_ *gocui.Gui, _ *gocui.View) error {
 	case PhasePlayerSelectField, PhasePlayerSelectFieldDraw:
 		if u.fieldCursor < len(u.matchingCards)-1 {
 			u.fieldCursor++
+		}
+	case PhaseKoiKoi:
+		if u.koikoiCursor < 1 {
+			u.koikoiCursor++
+		}
+	case PhaseGameEnd:
+		if u.gameEndCursor < 1 {
+			u.gameEndCursor++
 		}
 	}
 	return nil
@@ -1247,6 +1416,8 @@ func (u *UI) handleEnter(g *gocui.Gui, _ *gocui.View) error {
 		return u.onKoiKoiDecision(g)
 	case PhaseRoundEnd:
 		return u.onNextRound(g)
+	case PhaseGameEnd:
+		return u.onGameEndDecision(g)
 	}
 	return nil
 }
@@ -1341,7 +1512,7 @@ func (u *UI) checkPlayerYaku(g *gocui.Gui) {
 			u.game.PlayerScore += finalScore
 			u.addLog(fmt.Sprintf("手札なし → 自動的に勝負！ %d文獲得！", finalScore))
 			u.game.NextParentIsPlayer = true
-			u.finishRound(g)
+			u.finishRound(g, fmt.Sprintf("あなたの勝ち！ %d文獲得", finalScore))
 			return
 		}
 		u.newYaku = newYaku
@@ -1363,7 +1534,7 @@ func (u *UI) onKoiKoiDecision(g *gocui.Gui) error {
 		u.game.PlayerScore += finalScore
 		u.addLog(fmt.Sprintf("勝負！ %d文獲得！", finalScore))
 		u.game.NextParentIsPlayer = true
-		u.finishRound(g)
+		u.finishRound(g, fmt.Sprintf("あなたの勝ち！ %d文獲得", finalScore))
 	}
 	return nil
 }
@@ -1372,17 +1543,28 @@ func (u *UI) endPlayerTurn(g *gocui.Gui) {
 	u.game.IsPlayerTurn = false
 	if u.game.IsRoundOver() {
 		u.addLog("手札が尽きました。引き分けです。")
-		u.finishRound(g)
+		u.finishRound(g, "引き分け")
 		return
 	}
 	u.phase = PhaseCPUTurn
 	u.autoSave()
 }
 
-func (u *UI) finishRound(_ *gocui.Gui) {
+func (u *UI) finishRound(_ *gocui.Gui, result string) {
+	u.roundResult = result
 	u.game.Round++
 	if u.game.Round > u.game.MaxRounds {
+		u.game.Round = u.game.MaxRounds // ヘッダー表示用に戻す
 		u.phase = PhaseGameEnd
+		u.gameEndCursor = 0 // デフォルト: 1月から
+		switch {
+		case u.game.PlayerScore > u.game.CPUScore:
+			u.gameResult = msgPlayerWin
+		case u.game.PlayerScore < u.game.CPUScore:
+			u.gameResult = msgCPUWin
+		default:
+			u.gameResult = msgDraw
+		}
 		u.addLog("--- ゲーム終了 ---")
 		// ゲーム終了時はセーブデータ削除
 		DeleteSave(u.savePath)
@@ -1406,6 +1588,24 @@ func (u *UI) onNextRound(_ *gocui.Gui) error {
 	return nil
 }
 
+func (u *UI) onGameEndDecision(_ *gocui.Gui) error {
+	if u.gameEndCursor == 1 {
+		// 終了する
+		return gocui.ErrQuit
+	}
+	// 1月から再スタート
+	u.game = NewGame(u.game.MaxRounds)
+	u.game.StartRound()
+	u.cursor = 0
+	u.addLog("--- 1月から再スタート ---")
+	if u.game.IsPlayerTurn {
+		u.phase = PhasePlayerSelectHand
+	} else {
+		u.phase = PhaseCPUTurn
+	}
+	return nil
+}
+
 // ---- CPUターン ----
 
 var cpuTurnRunning atomic.Bool
@@ -1419,55 +1619,64 @@ func (u *UI) doCPUTurn(g *gocui.Gui) {
 	time.Sleep(800 * time.Millisecond)
 
 	g.Update(func(g *gocui.Gui) error {
-		handCard, fieldChoice := CPUChooseHandCard(u.game, u.difficulty)
-		captured := u.game.PlayCard(handCard, fieldChoice, false)
-		if len(captured) > 0 {
-			u.addLog(fmt.Sprintf("CPU: %s -> 獲得: %s", handCard.Name, capturedNames(captured)))
-		} else {
-			u.addLog(fmt.Sprintf("CPU: %sを場に出した", handCard.Name))
-		}
+		return u.executeCPUTurn(g)
+	})
+}
 
-		drawn, ok := u.game.DrawFromDeck()
-		if ok {
-			drawnMatches := u.game.MatchingFieldCards(drawn)
-			drawnFieldChoice := CPUChooseFieldCard(drawnMatches)
-			drawnCaptured := u.game.PlayDrawnCard(drawn, drawnFieldChoice, false)
-			if len(drawnCaptured) > 0 {
-				u.addLog(fmt.Sprintf("CPU山札: %s -> 獲得: %s", drawn.Name, capturedNames(drawnCaptured)))
-			} else {
-				u.addLog(fmt.Sprintf("CPU山札: %s -> 場へ", drawn.Name))
-			}
-		}
-
-		newYaku := u.game.CheckNewYaku(false)
-		if len(newYaku) > 0 {
-			for _, y := range newYaku {
-				u.addLog(fmt.Sprintf("CPU * %s (%d文)", y.Name, y.Points))
-			}
-			if len(u.game.CPUHand) > 0 && CPUDecideKoiKoi(u.game, CheckYaku(u.game.CPUCaptured), u.difficulty) {
-				u.addLog("CPU: こいこい！")
-				u.game.CPUKoiKoi = true
-				u.game.UpdatePrevYaku(false)
-			} else {
-				finalScore := u.game.CalcFinalScore(false)
-				u.game.CPUScore += finalScore
-				u.addLog(fmt.Sprintf("CPU: 勝負！ %d文獲得", finalScore))
-				u.game.NextParentIsPlayer = false
-				u.finishRound(g)
-				return nil
-			}
-		}
-
+func (u *UI) executeCPUTurn(g *gocui.Gui) error {
+	if len(u.game.CPUHand) == 0 {
 		u.game.IsPlayerTurn = true
-		if u.game.IsRoundOver() {
-			u.addLog("手札が尽きました。引き分けです。")
-			u.finishRound(g)
-			return nil
-		}
-		u.cursor = 0
 		u.phase = PhasePlayerSelectHand
 		return nil
-	})
+	}
+	handCard, fieldChoice := CPUChooseHandCard(u.game, u.difficulty)
+	captured := u.game.PlayCard(handCard, fieldChoice, false)
+	if len(captured) > 0 {
+		u.addLog(fmt.Sprintf("CPU: %s -> 獲得: %s", handCard.Name, capturedNames(captured)))
+	} else {
+		u.addLog(fmt.Sprintf("CPU: %sを場に出した", handCard.Name))
+	}
+
+	drawn, ok := u.game.DrawFromDeck()
+	if ok {
+		drawnMatches := u.game.MatchingFieldCards(drawn)
+		drawnFieldChoice := CPUChooseFieldCard(drawnMatches)
+		drawnCaptured := u.game.PlayDrawnCard(drawn, drawnFieldChoice, false)
+		if len(drawnCaptured) > 0 {
+			u.addLog(fmt.Sprintf("CPU山札: %s -> 獲得: %s", drawn.Name, capturedNames(drawnCaptured)))
+		} else {
+			u.addLog(fmt.Sprintf("CPU山札: %s -> 場へ", drawn.Name))
+		}
+	}
+
+	newYaku := u.game.CheckNewYaku(false)
+	if len(newYaku) > 0 {
+		for _, y := range newYaku {
+			u.addLog(fmt.Sprintf("CPU * %s (%d文)", y.Name, y.Points))
+		}
+		if len(u.game.CPUHand) > 0 && CPUDecideKoiKoi(u.game, CheckYaku(u.game.CPUCaptured), u.difficulty) {
+			u.addLog("CPU: こいこい！")
+			u.game.CPUKoiKoi = true
+			u.game.UpdatePrevYaku(false)
+		} else {
+			finalScore := u.game.CalcFinalScore(false)
+			u.game.CPUScore += finalScore
+			u.addLog(fmt.Sprintf("CPU: 勝負！ %d文獲得", finalScore))
+			u.game.NextParentIsPlayer = false
+			u.finishRound(g, fmt.Sprintf("CPUの勝ち！ %d文獲得", finalScore))
+			return nil
+		}
+	}
+
+	u.game.IsPlayerTurn = true
+	if u.game.IsRoundOver() {
+		u.addLog("手札が尽きました。引き分けです。")
+		u.finishRound(g, "引き分け")
+		return nil
+	}
+	u.cursor = 0
+	u.phase = PhasePlayerSelectHand
+	return nil
 }
 
 func capturedNames(cards []Card) string {

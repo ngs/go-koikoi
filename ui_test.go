@@ -3,10 +3,17 @@ package main
 import (
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/awesome-gocui/gocui"
+)
+
+const (
+	testRoundResult = "あなたの勝ち！ 5文獲得"
+	testResult      = "test"
 )
 
 func TestCellWidth(t *testing.T) {
@@ -317,6 +324,178 @@ func newTestUIWithGUI(t *testing.T) (*UI, *gocui.Gui) {
 	return u, g
 }
 
+// --- Init テスト ---
+
+func TestInitNewGame(t *testing.T) {
+	dir := t.TempDir()
+	u := NewUI()
+	u.Init(dir)
+
+	if u.game == nil {
+		t.Fatal("game should be initialized")
+	}
+	if u.game.Round != 1 {
+		t.Errorf("Round = %d, want 1", u.game.Round)
+	}
+	if u.phase != PhasePlayerSelectHand && u.phase != PhaseCPUTurn {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand or PhaseCPUTurn", u.phase)
+	}
+	if u.configDir != dir {
+		t.Errorf("configDir = %q, want %q", u.configDir, dir)
+	}
+}
+
+func TestInitWithSave(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "game.json")
+
+	sd := SaveData{
+		Round:         3,
+		MaxRounds:     12,
+		PlayerScore:   10,
+		CPUScore:      5,
+		DeckIDs:       []int{0, 1, 2, 3},
+		FieldIDs:      []int{4, 5},
+		PlayerHandIDs: []int{6, 7, 8, 9},
+		CPUHandIDs:    []int{10, 11, 12, 13},
+		IsPlayerTurn:  true,
+		Difficulty:    DifficultyHard,
+	}
+	if err := SaveGame(savePath, &sd); err != nil {
+		t.Fatal(err)
+	}
+
+	u := NewUI()
+	u.Init(dir)
+
+	if u.game.Round != 3 {
+		t.Errorf("Round = %d, want 3", u.game.Round)
+	}
+	if u.game.PlayerScore != 10 {
+		t.Errorf("PlayerScore = %d, want 10", u.game.PlayerScore)
+	}
+	if u.difficulty != DifficultyHard {
+		t.Errorf("difficulty = %q, want hard", u.difficulty)
+	}
+	if u.phase != PhasePlayerSelectHand {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand", u.phase)
+	}
+}
+
+func TestInitWithSaveCPUTurn(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "game.json")
+
+	sd := SaveData{
+		Round:         2,
+		MaxRounds:     12,
+		DeckIDs:       []int{0, 1, 2, 3},
+		FieldIDs:      []int{4, 5},
+		PlayerHandIDs: []int{6, 7},
+		CPUHandIDs:    []int{8, 9},
+		IsPlayerTurn:  false,
+		Difficulty:    DifficultyNormal,
+	}
+	if err := SaveGame(savePath, &sd); err != nil {
+		t.Fatal(err)
+	}
+
+	u := NewUI()
+	u.Init(dir)
+
+	if u.phase != PhaseCPUTurn {
+		t.Errorf("phase = %d, want PhaseCPUTurn", u.phase)
+	}
+}
+
+func TestInitWithStaleSave(t *testing.T) {
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "game.json")
+
+	// Round > MaxRounds の旧セーブデータ
+	sd := SaveData{
+		Round:      13,
+		MaxRounds:  12,
+		Difficulty: DifficultyHard,
+	}
+	if err := SaveGame(savePath, &sd); err != nil {
+		t.Fatal(err)
+	}
+
+	u := NewUI()
+	u.Init(dir)
+
+	// 旧データは破棄され新規ゲーム
+	if u.game.Round != 1 {
+		t.Errorf("Round = %d, want 1 (stale save should be discarded)", u.game.Round)
+	}
+	// セーブファイルが削除されている
+	if _, err := LoadGame(savePath); err == nil {
+		t.Error("stale save file should have been deleted")
+	}
+}
+
+func TestRestoreSave(t *testing.T) {
+	u := newTestUI(t)
+	sd := SaveData{
+		Round:         5,
+		MaxRounds:     12,
+		PlayerScore:   20,
+		CPUScore:      15,
+		DeckIDs:       []int{0, 1, 2},
+		FieldIDs:      []int{3, 4},
+		PlayerHandIDs: []int{5, 6, 7},
+		CPUHandIDs:    []int{8, 9, 10},
+		IsPlayerTurn:  true,
+		Difficulty:    DifficultyEasy,
+		LogLines:      []string{"log1"},
+	}
+	u.restoreSave(&sd)
+
+	if u.game.Round != 5 {
+		t.Errorf("Round = %d, want 5", u.game.Round)
+	}
+	if u.difficulty != DifficultyEasy {
+		t.Errorf("difficulty = %q, want easy", u.difficulty)
+	}
+	if u.phase != PhasePlayerSelectHand {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand", u.phase)
+	}
+}
+
+func TestUINewGame(t *testing.T) {
+	u := newTestUI(t)
+	u.newGame(6)
+
+	if u.game.MaxRounds != 6 {
+		t.Errorf("MaxRounds = %d, want 6", u.game.MaxRounds)
+	}
+	if u.game.Round != 1 {
+		t.Errorf("Round = %d, want 1", u.game.Round)
+	}
+	if u.phase != PhasePlayerSelectHand && u.phase != PhaseCPUTurn {
+		t.Errorf("phase = %d, unexpected", u.phase)
+	}
+}
+
+func TestSetInitialPhasePlayer(t *testing.T) {
+	u := newTestUI(t)
+	u.game.IsPlayerTurn = true
+	u.setInitialPhase()
+	if u.phase != PhasePlayerSelectHand {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand", u.phase)
+	}
+}
+
+func TestSetInitialPhaseCPU(t *testing.T) {
+	u := newTestUI(t)
+	u.game.IsPlayerTurn = false
+	u.setInitialPhase()
+	if u.phase != PhaseCPUTurn {
+		t.Errorf("phase = %d, want PhaseCPUTurn", u.phase)
+	}
+}
+
 // --- handleQuit テスト ---
 
 func TestHandleQuit(t *testing.T) {
@@ -585,17 +764,17 @@ func TestHandleUp(t *testing.T) {
 	}
 }
 
-func TestHandleUpKoiKoi(t *testing.T) {
+func TestHandleLeftKoiKoi(t *testing.T) {
 	u := newTestUI(t)
 	u.phase = PhaseKoiKoi
 	u.koikoiCursor = 1
 
-	u.handleUp(nil, nil)
+	u.handleLeft(nil, nil)
 	if u.koikoiCursor != 0 {
 		t.Errorf("koikoiCursor = %d, want 0", u.koikoiCursor)
 	}
 
-	u.handleUp(nil, nil)
+	u.handleLeft(nil, nil)
 	if u.koikoiCursor != 0 {
 		t.Error("koikoiCursor should not go below 0")
 	}
@@ -671,16 +850,16 @@ func TestHandleDown(t *testing.T) {
 	}
 }
 
-func TestHandleDownKoiKoi(t *testing.T) {
+func TestHandleRightKoiKoi(t *testing.T) {
 	u := newTestUI(t)
 	u.phase = PhaseKoiKoi
 	u.koikoiCursor = 0
 
-	u.handleDown(nil, nil)
+	u.handleRight(nil, nil)
 	if u.koikoiCursor != 1 {
 		t.Errorf("koikoiCursor = %d, want 1", u.koikoiCursor)
 	}
-	u.handleDown(nil, nil)
+	u.handleRight(nil, nil)
 	if u.koikoiCursor != 1 {
 		t.Error("koikoiCursor should not exceed 1")
 	}
@@ -1281,13 +1460,47 @@ func TestFinishRoundGameEnd(t *testing.T) {
 	u := newTestUI(t)
 	u.game.Round = 12
 	u.game.MaxRounds = 12
+	u.game.PlayerScore = 10
+	u.game.CPUScore = 5
 
-	u.finishRound(nil)
+	u.finishRound(nil, testResult)
 	if u.phase != PhaseGameEnd {
 		t.Errorf("phase = %d, want PhaseGameEnd", u.phase)
 	}
-	if u.game.Round != 13 {
-		t.Errorf("Round = %d, want 13", u.game.Round)
+	if u.game.Round != 12 {
+		t.Errorf("Round = %d, want 12", u.game.Round)
+	}
+	if u.gameEndCursor != 0 {
+		t.Errorf("gameEndCursor = %d, want 0", u.gameEndCursor)
+	}
+	if u.gameResult == "" {
+		t.Error("gameResult should be set")
+	}
+}
+
+func TestFinishRoundGameEndResults(t *testing.T) {
+	tests := []struct {
+		name        string
+		playerScore int
+		cpuScore    int
+		wantResult  string
+	}{
+		{"player wins", 10, 5, msgPlayerWin},
+		{"cpu wins", 5, 10, msgCPUWin},
+		{"draw", 5, 5, msgDraw},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := newTestUI(t)
+			u.game.Round = 12
+			u.game.MaxRounds = 12
+			u.game.PlayerScore = tt.playerScore
+			u.game.CPUScore = tt.cpuScore
+			u.finishRound(nil, testResult)
+			if u.gameResult != tt.wantResult {
+				t.Errorf("gameResult = %q, want %q", u.gameResult, tt.wantResult)
+			}
+		})
 	}
 }
 
@@ -1296,7 +1509,7 @@ func TestFinishRoundContinue(t *testing.T) {
 	u.game.Round = 1
 	u.game.MaxRounds = 12
 
-	u.finishRound(nil)
+	u.finishRound(nil, testResult)
 	if u.phase != PhaseRoundEnd {
 		t.Errorf("phase = %d, want PhaseRoundEnd", u.phase)
 	}
@@ -1976,6 +2189,29 @@ func TestSetOverlayTitleNarrow(t *testing.T) {
 	setOverlayTitle(g, "narrow", 0, 1, 5, " とても長いタイトル ")
 }
 
+func TestSetOverlayTitleInvalidCoords(t *testing.T) {
+	g := newTestGUI(t)
+	// x0 > x1 で SetView が ErrInvalidPoint を返すパス
+	setOverlayTitle(g, "bad", 10, 1, 3, "title")
+}
+
+// setGUIMaxX は gocui.Gui の unexported な maxX フィールドを書き換える。
+func setGUIMaxX(g *gocui.Gui, v int) {
+	field := reflect.ValueOf(g).Elem().FieldByName("maxX")
+	*(*int)(unsafe.Pointer(field.UnsafeAddr())) = v
+}
+
+func TestLayoutErrorSmallScreen(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	// maxX を -1 にして SetView の x0 >= x1 エラーを発生させる
+	setGUIMaxX(g, -1)
+
+	err := u.layout(g)
+	if err == nil {
+		t.Error("layout should return error when screen width is invalid")
+	}
+}
+
 // --- draw 関数の nil view ガードテスト ---
 
 func TestDrawFunctionsNilView(t *testing.T) {
@@ -2109,6 +2345,221 @@ func TestDrawOptConfBothCursors(t *testing.T) {
 
 	u.optConfCursor = 1
 	u.drawOptConf(g)
+}
+
+// --- drawKoiKoi / drawRoundEnd ---
+
+func TestDrawKoiKoi(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseKoiKoi
+	u.newYaku = []Yaku{{"カス", 1}}
+	u.game.PlayerCaptured = cardsFromIDList(2, 3, 6, 7, 10, 11, 14, 15, 18, 19)
+	u.layout(g)
+
+	u.koikoiCursor = 0
+	u.drawKoiKoi(g)
+
+	u.koikoiCursor = 1
+	u.drawKoiKoi(g)
+}
+
+func TestDrawKoiKoiDoubleScore(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseKoiKoi
+	u.newYaku = []Yaku{{"カス", 1}, {"タネ", 1}}
+	u.game.PlayerKoiKoi = false
+	u.game.CPUKoiKoi = true // CPU がこいこいしたので得点2倍
+	u.game.PlayerCaptured = cardsFromIDList(2, 3, 4, 5, 6, 7, 10, 11, 14, 15, 18, 19, 22, 23)
+	u.layout(g)
+
+	u.drawKoiKoi(g)
+}
+
+func TestDrawKoiKoiNilView(t *testing.T) {
+	u := newTestUI(t)
+	g := newTestGUI(t)
+	// koikoi ビューが作成されていない状態で呼んでもパニックしない
+	u.drawKoiKoi(g)
+}
+
+func TestDrawRoundEnd(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseRoundEnd
+	u.roundResult = testRoundResult
+	u.game.Round = 2
+	u.game.PlayerScore = 5
+	u.game.CPUScore = 0
+	u.layout(g)
+
+	u.drawRoundEnd(g)
+}
+
+func TestDrawRoundEndNilView(t *testing.T) {
+	u := newTestUI(t)
+	g := newTestGUI(t)
+	u.drawRoundEnd(g)
+}
+
+func TestLayoutKoiKoiPopup(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseKoiKoi
+	u.newYaku = []Yaku{{"カス", 1}}
+	u.game.PlayerCaptured = cardsFromIDList(2, 3, 6, 7, 10, 11, 14, 15, 18, 19)
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+	// ポップアップが作成されていることを確認
+	if v, _ := g.View("koikoi"); v == nil {
+		t.Error("koikoi view should exist")
+	}
+}
+
+func TestLayoutRoundEndPopup(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseRoundEnd
+	u.roundResult = "引き分け"
+	u.game.Round = 2
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+	if v, _ := g.View("roundend"); v == nil {
+		t.Error("roundend view should exist")
+	}
+}
+
+func TestLayoutDeletesKoiKoiPopup(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseKoiKoi
+	u.newYaku = []Yaku{{"カス", 1}}
+	u.game.PlayerCaptured = cardsFromIDList(2, 3, 6, 7, 10, 11, 14, 15, 18, 19)
+	u.layout(g)
+
+	// フェーズ変更後、ポップアップが削除されることを確認
+	u.phase = PhasePlayerSelectHand
+	u.layout(g)
+	if v, _ := g.View("koikoi"); v != nil {
+		t.Error("koikoi view should be deleted")
+	}
+}
+
+func TestLayoutDeletesRoundEndPopup(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseRoundEnd
+	u.roundResult = testResult
+	u.game.Round = 2
+	u.layout(g)
+
+	u.phase = PhasePlayerSelectHand
+	u.layout(g)
+	if v, _ := g.View("roundend"); v != nil {
+		t.Error("roundend view should be deleted")
+	}
+}
+
+func TestLayoutGameEndPopup(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseGameEnd
+	u.gameResult = msgPlayerWin
+	u.roundResult = testRoundResult
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+	if v, _ := g.View("gameend"); v == nil {
+		t.Error("gameend view should exist")
+	}
+}
+
+func TestLayoutDeletesGameEndPopup(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseGameEnd
+	u.gameResult = testResult
+	u.roundResult = testResult
+	u.layout(g)
+
+	u.phase = PhasePlayerSelectHand
+	u.layout(g)
+	if v, _ := g.View("gameend"); v != nil {
+		t.Error("gameend view should be deleted")
+	}
+}
+
+func TestDrawGameEnd(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseGameEnd
+	u.gameResult = msgPlayerWin
+	u.roundResult = testRoundResult
+	u.game.PlayerScore = 10
+	u.game.CPUScore = 5
+	u.layout(g)
+
+	u.gameEndCursor = 0
+	u.drawGameEnd(g)
+
+	u.gameEndCursor = 1
+	u.drawGameEnd(g)
+}
+
+func TestDrawGameEndNilView(t *testing.T) {
+	u := newTestUI(t)
+	g := newTestGUI(t)
+	u.drawGameEnd(g)
+}
+
+func TestHandleLeftGameEnd(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseGameEnd
+	u.gameEndCursor = 1
+	u.handleLeft(nil, nil)
+	if u.gameEndCursor != 0 {
+		t.Errorf("gameEndCursor = %d, want 0", u.gameEndCursor)
+	}
+}
+
+func TestHandleRightGameEnd(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseGameEnd
+	u.gameEndCursor = 0
+	u.handleRight(nil, nil)
+	if u.gameEndCursor != 1 {
+		t.Errorf("gameEndCursor = %d, want 1", u.gameEndCursor)
+	}
+}
+
+func TestOnGameEndDecisionQuit(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseGameEnd
+	u.gameEndCursor = 1
+
+	err := u.onGameEndDecision(nil)
+	if !errors.Is(err, gocui.ErrQuit) {
+		t.Error("onGameEndDecision with cursor=1 should return ErrQuit")
+	}
+}
+
+func TestOnGameEndDecisionRestart(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseGameEnd
+	u.gameEndCursor = 0
+	u.game.PlayerScore = 10
+	u.game.CPUScore = 5
+	u.game.MaxRounds = 12
+
+	err := u.onGameEndDecision(nil)
+	if err != nil {
+		t.Fatalf("onGameEndDecision error: %v", err)
+	}
+	if u.game.PlayerScore != 0 {
+		t.Errorf("PlayerScore = %d, want 0 (new game)", u.game.PlayerScore)
+	}
+	if u.game.Round != 1 {
+		t.Errorf("Round = %d, want 1", u.game.Round)
+	}
+	if u.phase != PhasePlayerSelectHand && u.phase != PhaseCPUTurn {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand or PhaseCPUTurn", u.phase)
+	}
 }
 
 // --- CPUChooseHandCard Easy のランダムブランチ強化 ---

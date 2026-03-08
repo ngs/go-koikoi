@@ -138,8 +138,5 @@ func contains(ids []int, target int) bool {
 }
 
 func extraPoints(count, base int) int {
-	if count < base {
-		return 0
-	}
-	return count - base
+	return max(count-base, 0)
 }
