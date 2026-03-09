@@ -97,6 +97,23 @@ func TestExecuteCPUTurnKoiKoi(t *testing.T) {
 	if !u.game.CPUKoiKoi {
 		t.Error("CPUKoiKoi should be true")
 	}
+	if u.phase != PhaseCPUKoiKoi {
+		t.Errorf("phase = %d, want PhaseCPUKoiKoi(%d)", u.phase, PhaseCPUKoiKoi)
+	}
+	if len(u.cpuKoiKoiYaku) == 0 {
+		t.Error("cpuKoiKoiYaku should not be empty")
+	}
+
+	// OKボタン押下でプレイヤーターンへ
+	if err := u.onCPUKoiKoiOK(g); err != nil {
+		t.Fatalf("onCPUKoiKoiOK error: %v", err)
+	}
+	if u.phase != PhasePlayerSelectHand {
+		t.Errorf("phase after OK = %d, want PhasePlayerSelectHand(%d)", u.phase, PhasePlayerSelectHand)
+	}
+	if u.cpuKoiKoiYaku != nil {
+		t.Error("cpuKoiKoiYaku should be nil after OK")
+	}
 }
 
 func TestExecuteCPUTurnRoundOver(t *testing.T) {

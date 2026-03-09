@@ -656,7 +656,7 @@ func TestCheckReachAotan(t *testing.T) {
 	}
 }
 
-func TestCheckReachAkatanAotanOverlap(t *testing.T) {
+func TestCheckReachAkatanAotanOverlapFromAkatan(t *testing.T) {
 	// 赤短成立 + 青短2枚 → 赤短・青短の重複リーチ
 	captured := cardsFromIDList(1, 5, 9, 21, 33) // 赤短3枚 + 青短2枚
 	reaches := CheckReach(captured)
@@ -664,9 +664,29 @@ func TestCheckReachAkatanAotanOverlap(t *testing.T) {
 	if r == nil {
 		t.Fatalf("赤短・青短の重複リーチが検出されない: %v", reachNames(reaches))
 	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 37 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
 	// 青短の個別リーチは出ない
 	if hasReach(reaches, "青短") != nil {
 		t.Error("赤短成立時に青短リーチが個別に出てしまう")
+	}
+}
+
+func TestCheckReachAkatanAotanOverlapFromAotan(t *testing.T) {
+	// 青短成立 + 赤短2枚 → 赤短・青短の重複リーチ
+	captured := cardsFromIDList(21, 33, 37, 1, 5) // 青短3枚 + 赤短2枚
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "赤短・青短の重複")
+	if r == nil {
+		t.Fatalf("赤短・青短の重複リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 9 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
+	// 赤短の個別リーチは出ない
+	if hasReach(reaches, "赤短") != nil {
+		t.Error("青短成立時に赤短リーチが個別に出てしまう")
 	}
 }
 
