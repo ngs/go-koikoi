@@ -26,6 +26,7 @@ const (
 	PhasePlayerDrawResult
 	PhasePlayerSelectFieldDraw
 	PhaseKoiKoi
+	PhaseCPUKoiKoi
 	PhaseCPUTurn
 	PhaseRoundEnd
 	PhaseGameEnd
@@ -50,6 +51,7 @@ type UI struct {
 	koikoiCursor  int
 	gameEndCursor int // ゲーム終了ダイアログ (0=1月から, 1=終了する)
 	newYaku       []Yaku
+	cpuKoiKoiYaku []Yaku     // CPUこいこい時の役（ダイアログ表示用）
 	roundResult   string     // ラウンド結果メッセージ
 	gameResult    string     // ゲーム終了結果メッセージ
 	showLog       bool       // 行動履歴ポップアップ表示
@@ -435,6 +437,27 @@ func (u *UI) layout(g *gocui.Gui) error {
 	} else {
 		_ = g.DeleteView("koikoi")
 		_ = g.DeleteView("koikoi_t")
+	}
+
+	// --- CPUこいこいポップアップ ---
+	if u.phase == PhaseCPUKoiKoi {
+		pw := 44
+		yakuCount := len(u.cpuKoiKoiYaku)
+		ph := 10 + yakuCount
+		px0 := (maxX - pw) / 2
+		py0 := (maxY - ph) / 2
+		if v, err := g.SetView("cpukoikoi", px0, py0, px0+pw, py0+ph, 0); err != nil {
+			if !errors.Is(err, gocui.ErrUnknownView) {
+				return err
+			}
+			v.Frame = true
+			v.FrameRunes = []rune{'━', '┃', '┏', '┓', '┗', '┛', '┏', '┓', '┏', '┗', '┏'}
+		}
+		setOverlayTitle(g, "cpukoikoi", px0, py0, px0+pw, " CPUがこいこい！ ")
+		u.drawCPUKoiKoi(g)
+	} else {
+		_ = g.DeleteView("cpukoikoi")
+		_ = g.DeleteView("cpukoikoi_t")
 	}
 
 	// --- ラウンド終了ポップアップ ---
@@ -921,6 +944,34 @@ func (u *UI) drawKoiKoi(g *gocui.Gui) {
 	fmt.Fprintln(v, centerPad("←/→:選択  Enter:決定", innerW))
 }
 
+func (u *UI) drawCPUKoiKoi(g *gocui.Gui) {
+	v, _ := g.View("cpukoikoi")
+	if v == nil {
+		return
+	}
+	v.Clear()
+
+	innerW := 42
+
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad("*** CPUがこいこいしました ***", innerW))
+	fmt.Fprintln(v)
+	for _, y := range u.cpuKoiKoiYaku {
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("%s (%d文)", y.Name, y.Points), innerW))
+	}
+	fmt.Fprintln(v)
+	basePoints := TotalPoints(CheckYaku(u.game.CPUCaptured))
+	fmt.Fprintln(v, centerPad(fmt.Sprintf("合計: %d文", basePoints), innerW))
+	fmt.Fprintln(v)
+
+	okLabel := ansiReverse + "  OK  " + ansiReset
+	okW := cellWidth("  OK  ")
+	okPad := max((innerW-okW)/2, 0)
+	fmt.Fprintln(v, strings.Repeat(" ", okPad)+okLabel)
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad("Enter:閉じる", innerW))
+}
+
 func (u *UI) drawRoundEnd(g *gocui.Gui) {
 	v, _ := g.View("roundend")
 	if v == nil {
@@ -1025,6 +1076,8 @@ func (u *UI) drawStatus(g *gocui.Gui) {
 		fmt.Fprint(v, " Left/Right: 場札選択 | Enter: 決定")
 	case PhaseKoiKoi:
 		fmt.Fprint(v, " Left/Right: 選択 | Enter: 決定")
+	case PhaseCPUKoiKoi:
+		fmt.Fprint(v, " Enter: OK")
 	case PhaseCPUTurn:
 		fmt.Fprint(v, " CPUが考え中...")
 	case PhaseRoundEnd:
@@ -1433,6 +1486,8 @@ func (u *UI) handleEnter(g *gocui.Gui, _ *gocui.View) error {
 		return u.onSelectFieldForDraw(g)
 	case PhaseKoiKoi:
 		return u.onKoiKoiDecision(g)
+	case PhaseCPUKoiKoi:
+		return u.onCPUKoiKoiOK(g)
 	case PhaseRoundEnd:
 		return u.onNextRound(g)
 	case PhaseGameEnd:
@@ -1642,6 +1697,19 @@ func (u *UI) doCPUTurn(g *gocui.Gui) {
 	})
 }
 
+func (u *UI) onCPUKoiKoiOK(_ *gocui.Gui) error {
+	u.cpuKoiKoiYaku = nil
+	u.game.IsPlayerTurn = true
+	if u.game.IsRoundOver() {
+		u.addLog("手札が尽きました。引き分けです。")
+		u.finishRound(nil, "引き分け")
+		return nil
+	}
+	u.cursor = 0
+	u.phase = PhasePlayerSelectHand
+	return nil
+}
+
 func (u *UI) executeCPUTurn(g *gocui.Gui) error {
 	if len(u.game.CPUHand) == 0 {
 		u.game.IsPlayerTurn = true
@@ -1677,6 +1745,9 @@ func (u *UI) executeCPUTurn(g *gocui.Gui) error {
 			u.addLog("CPU: こいこい！")
 			u.game.CPUKoiKoi = true
 			u.game.UpdatePrevYaku(false)
+			u.cpuKoiKoiYaku = newYaku
+			u.phase = PhaseCPUKoiKoi
+			return nil
 		} else {
 			finalScore := u.game.CalcFinalScore(false)
 			u.game.CPUScore += finalScore

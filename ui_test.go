@@ -217,8 +217,8 @@ func TestPhaseConstants(t *testing.T) {
 	if PhasePlayerSelectHand != 0 {
 		t.Errorf("PhasePlayerSelectHand = %d, want 0", PhasePlayerSelectHand)
 	}
-	if PhaseGameEnd != 7 {
-		t.Errorf("PhaseGameEnd = %d, want 7", PhaseGameEnd)
+	if PhaseGameEnd != 8 {
+		t.Errorf("PhaseGameEnd = %d, want 8", PhaseGameEnd)
 	}
 }
 
@@ -2560,6 +2560,83 @@ func TestOnGameEndDecisionRestart(t *testing.T) {
 	if u.phase != PhasePlayerSelectHand && u.phase != PhaseCPUTurn {
 		t.Errorf("phase = %d, want PhasePlayerSelectHand or PhaseCPUTurn", u.phase)
 	}
+}
+
+// --- PhaseCPUKoiKoi テスト ---
+
+func TestDrawCPUKoiKoiNilView(t *testing.T) {
+	g := newTestGUI(t)
+	u := newTestUI(t)
+	// view なし → nil ガードが発動してパニックしない
+	u.drawCPUKoiKoi(g)
+}
+
+func TestDrawCPUKoiKoiWithView(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.CPUCaptured = cardsFromIDList(0, 8, 28) // 三光成立
+	u.cpuKoiKoiYaku = []Yaku{{"三光", 5}}
+	u.phase = PhaseCPUKoiKoi
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+	// drawCPUKoiKoi は layout 内で呼ばれる。直接呼んでも OK
+	u.drawCPUKoiKoi(g)
+}
+
+func TestDrawStatusCPUKoiKoi(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.phase = PhaseCPUKoiKoi
+	u.layout(g)
+	u.drawStatus(g)
+}
+
+func TestHandleEnterCPUKoiKoi(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.cpuKoiKoiYaku = []Yaku{{"三光", 5}}
+	u.phase = PhaseCPUKoiKoi
+	u.layout(g)
+
+	if err := u.handleEnter(g, nil); err != nil {
+		t.Fatalf("handleEnter error: %v", err)
+	}
+	if u.phase != PhasePlayerSelectHand {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand", u.phase)
+	}
+}
+
+func TestOnCPUKoiKoiOKRoundOver(t *testing.T) {
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	// 手札を空にして IsRoundOver() == true にする
+	u.game.PlayerHand = nil
+	u.game.CPUHand = nil
+	u.cpuKoiKoiYaku = []Yaku{{"三光", 5}}
+	u.phase = PhaseCPUKoiKoi
+
+	if err := u.onCPUKoiKoiOK(nil); err != nil {
+		t.Fatalf("onCPUKoiKoiOK error: %v", err)
+	}
+	// 引き分けでラウンド終了フェーズへ
+	if u.phase != PhaseRoundEnd {
+		t.Errorf("phase = %d, want PhaseRoundEnd", u.phase)
+	}
+}
+
+// --- drawMyCaptured リーチ（nil Missing）テスト ---
+
+func TestDrawMyCapturedReachNilMissing(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	// 種札4枚 → タネのリーチ（Missing == nil）
+	u.game.PlayerCaptured = cardsFromIDList(4, 12, 16, 29)
+	u.layout(g)
+	u.drawMyCaptured(g)
 }
 
 // --- CPUChooseHandCard Easy のランダムブランチ強化 ---
