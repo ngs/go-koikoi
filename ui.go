@@ -680,6 +680,25 @@ func (u *UI) drawMyCaptured(g *gocui.Gui) {
 	v.Clear()
 	fmt.Fprintln(v)
 	writeCapturedDetail(v, u.game.PlayerCaptured)
+
+	// リーチ表示
+	reaches := CheckReach(u.game.PlayerCaptured)
+	if len(reaches) > 0 {
+		fmt.Fprintln(v)
+		fmt.Fprintf(v, " %s── リーチ ──%s\n", ansiDim, ansiReset)
+		for _, r := range reaches {
+			if len(r.Missing) > 0 {
+				var names []string
+				for _, c := range r.Missing {
+					names = append(names, c.Name)
+				}
+				fmt.Fprintf(v, " %s%s: %s%s\n", ansiDim, r.Name, strings.Join(names, " / "), ansiReset)
+			} else {
+				fmt.Fprintf(v, " %s%s: あと1枚%s\n", ansiDim, r.Name, ansiReset)
+			}
+		}
+	}
+
 	fmt.Fprintln(v)
 }
 
