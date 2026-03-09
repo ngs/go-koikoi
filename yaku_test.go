@@ -498,6 +498,240 @@ func TestCheckYakuHikariExclusivity(t *testing.T) {
 	}
 }
 
+// --- CheckReach テスト ---
+
+func hasReach(reaches []YakuReach, name string) *YakuReach {
+	for i, r := range reaches {
+		if r.Name == name {
+			return &reaches[i]
+		}
+	}
+	return nil
+}
+
+func reachNames(reaches []YakuReach) []string {
+	names := make([]string, 0, len(reaches))
+	for _, r := range reaches {
+		names = append(names, r.Name)
+	}
+	return names
+}
+
+func TestCheckReachGokou(t *testing.T) {
+	// 光4枚 → 五光リーチ
+	captured := cardsFromIDList(0, 8, 28, 40)
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "五光")
+	if r == nil {
+		t.Fatalf("五光リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 44 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
+}
+
+func TestCheckReachSikou(t *testing.T) {
+	// 柳以外の光3枚(三光成立中) → 四光リーチ
+	captured := cardsFromIDList(0, 8, 28)
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "四光")
+	if r == nil {
+		t.Fatalf("四光リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 44 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
+}
+
+func TestCheckReachAmeSikou(t *testing.T) {
+	// 柳 + 柳以外2枚 → 雨四光リーチ
+	captured := cardsFromIDList(0, 8, 40)
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "雨四光")
+	if r == nil {
+		t.Fatalf("雨四光リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 2 {
+		t.Errorf("不足札の数が不正: got %d, want 2", len(r.Missing))
+	}
+}
+
+func TestCheckReachAmeSikouFromSankou(t *testing.T) {
+	// 三光成立中(柳以外3枚) → 柳を取れば雨四光
+	captured := cardsFromIDList(0, 8, 28)
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "雨四光")
+	if r == nil {
+		t.Fatalf("雨四光リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 40 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
+}
+
+func TestCheckReachSankou(t *testing.T) {
+	// 柳以外の光2枚 → 三光リーチ
+	captured := cardsFromIDList(0, 8)
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "三光")
+	if r == nil {
+		t.Fatalf("三光リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 2 {
+		t.Errorf("不足札の数が不正: got %d, want 2", len(r.Missing))
+	}
+}
+
+func TestCheckReachSankouNotWithYanagi(t *testing.T) {
+	// 柳 + 柳以外1枚 → 三光リーチにはならない（柳を含むため）
+	captured := cardsFromIDList(0, 40)
+	reaches := CheckReach(captured)
+	if r := hasReach(reaches, "三光"); r != nil {
+		t.Error("柳を含む場合に三光リーチが検出された")
+	}
+}
+
+func TestCheckReachInoshikacho(t *testing.T) {
+	// 猪鹿のうち2枚 → 猪鹿蝶リーチ
+	captured := cardsFromIDList(24, 36) // 萩に猪, 紅葉に鹿
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "猪鹿蝶")
+	if r == nil {
+		t.Fatalf("猪鹿蝶リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 20 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
+}
+
+func TestCheckReachHanamiDeIppai(t *testing.T) {
+	// 桜に幕(8)あり → 菊に盃(32)で花見で一杯
+	captured := cardsFromIDList(8)
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "花見で一杯")
+	if r == nil {
+		t.Fatalf("花見で一杯リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 32 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
+}
+
+func TestCheckReachTsukimiDeIppai(t *testing.T) {
+	// 芒に月(28)あり → 菊に盃(32)で月見で一杯
+	captured := cardsFromIDList(28)
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "月見で一杯")
+	if r == nil {
+		t.Fatalf("月見で一杯リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 32 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
+}
+
+func TestCheckReachAkatan(t *testing.T) {
+	// 赤短2枚 → 赤短リーチ
+	captured := cardsFromIDList(1, 5) // 松に赤短, 梅に赤短
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "赤短")
+	if r == nil {
+		t.Fatalf("赤短リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 9 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
+}
+
+func TestCheckReachAotan(t *testing.T) {
+	// 青短2枚 → 青短リーチ
+	captured := cardsFromIDList(21, 33) // 牡丹に短冊, 菊に短冊
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "青短")
+	if r == nil {
+		t.Fatalf("青短リーチが検出されない: %v", reachNames(reaches))
+	}
+	if len(r.Missing) != 1 || r.Missing[0].ID != 37 {
+		t.Errorf("不足札が不正: %v", r.Missing)
+	}
+}
+
+func TestCheckReachAkatanAotanOverlap(t *testing.T) {
+	// 赤短成立 + 青短2枚 → 赤短・青短の重複リーチ
+	captured := cardsFromIDList(1, 5, 9, 21, 33) // 赤短3枚 + 青短2枚
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "赤短・青短の重複")
+	if r == nil {
+		t.Fatalf("赤短・青短の重複リーチが検出されない: %v", reachNames(reaches))
+	}
+	// 青短の個別リーチは出ない
+	if hasReach(reaches, "青短") != nil {
+		t.Error("赤短成立時に青短リーチが個別に出てしまう")
+	}
+}
+
+func TestCheckReachTane(t *testing.T) {
+	// 種札4枚 → タネリーチ
+	captured := cardsFromIDList(4, 12, 16, 29) // 梅に鶯, 藤に不如帰, 菖蒲に八橋, 芒に雁
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "タネ")
+	if r == nil {
+		t.Fatalf("タネリーチが検出されない: %v", reachNames(reaches))
+	}
+	if r.Missing != nil {
+		t.Errorf("タネリーチのMissingはnilのはず: %v", r.Missing)
+	}
+}
+
+func TestCheckReachTan(t *testing.T) {
+	// 短冊4枚（赤短・青短にかからない組み合わせ） → タンリーチ
+	captured := cardsFromIDList(13, 17, 25, 42) // 藤, 菖蒲, 萩, 柳 の短冊
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "タン")
+	if r == nil {
+		t.Fatalf("タンリーチが検出されない: %v", reachNames(reaches))
+	}
+}
+
+func TestCheckReachKasu(t *testing.T) {
+	// カス9枚 → カスリーチ
+	captured := cardsFromIDList(2, 3, 6, 7, 10, 11, 14, 15, 18)
+	reaches := CheckReach(captured)
+	r := hasReach(reaches, "カス")
+	if r == nil {
+		t.Fatalf("カスリーチが検出されない: %v", reachNames(reaches))
+	}
+}
+
+func TestCheckReachNoReach(t *testing.T) {
+	// 光1枚だけ → リーチなし
+	captured := cardsFromIDList(0)
+	reaches := CheckReach(captured)
+	// 花見で一杯のリーチのみ（桜に幕ではないので）
+	// 松に鶴(0)は光なので花見/月見には関係ない
+	for _, r := range reaches {
+		if r.Name == "三光" || r.Name == "四光" || r.Name == "五光" {
+			t.Errorf("光1枚で%sリーチが検出された", r.Name)
+		}
+	}
+}
+
+func TestCheckReachAlreadyComplete(t *testing.T) {
+	// 五光成立 → 五光リーチは出ない
+	captured := cardsFromIDList(0, 8, 28, 40, 44)
+	reaches := CheckReach(captured)
+	if hasReach(reaches, "五光") != nil {
+		t.Error("五光成立時に五光リーチが出てしまう")
+	}
+}
+
+func TestCheckReachEmpty(t *testing.T) {
+	reaches := CheckReach(nil)
+	if len(reaches) != 0 {
+		t.Errorf("空の獲得札でリーチが検出された: %v", reachNames(reaches))
+	}
+}
+
 // 複合役テスト
 func TestCheckYakuMultiple(t *testing.T) {
 	// 三光(0,8,28) + 花見で一杯(8,32) + 月見で一杯(28,32)
