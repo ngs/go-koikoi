@@ -2557,8 +2557,9 @@ func TestOnGameEndDecisionRestart(t *testing.T) {
 	if u.game.Round != 1 {
 		t.Errorf("Round = %d, want 1", u.game.Round)
 	}
-	if u.phase != PhasePlayerSelectHand && u.phase != PhaseCPUTurn {
-		t.Errorf("phase = %d, want PhasePlayerSelectHand or PhaseCPUTurn", u.phase)
+	// NewGame は常に NextParentIsPlayer = true なので、再スタート時は必ずプレイヤー先攻
+	if u.phase != PhasePlayerSelectHand {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand", u.phase)
 	}
 }
 

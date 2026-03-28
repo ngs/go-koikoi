@@ -1047,6 +1047,7 @@ func (u *UI) applyOptions() error {
 	DeleteSave(u.savePath)
 
 	// ゲームリセット
+	// NewGame は NextParentIsPlayer = true で初期化するため、常にプレイヤー先攻
 	u.game = NewGame(u.settings.Rounds)
 	u.game.StartRound()
 	u.logLines = nil
@@ -1055,12 +1056,7 @@ func (u *UI) applyOptions() error {
 	u.cursor = 0
 	u.showOptions = false
 	u.showOptConf = false
-
-	if u.game.IsPlayerTurn {
-		u.phase = PhasePlayerSelectHand
-	} else {
-		u.phase = PhaseCPUTurn
-	}
+	u.phase = PhasePlayerSelectHand
 	return nil
 }
 
@@ -1690,15 +1686,12 @@ func (u *UI) onGameEndDecision(_ *gocui.Gui) error {
 		return gocui.ErrQuit
 	}
 	// 1月から再スタート
+	// NewGame は NextParentIsPlayer = true で初期化するため、常にプレイヤー先攻
 	u.game = NewGame(u.game.MaxRounds)
 	u.game.StartRound()
 	u.cursor = 0
 	u.addLog("--- 1月から再スタート ---")
-	if u.game.IsPlayerTurn {
-		u.phase = PhasePlayerSelectHand
-	} else {
-		u.phase = PhaseCPUTurn
-	}
+	u.phase = PhasePlayerSelectHand
 	return nil
 }
 
