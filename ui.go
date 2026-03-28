@@ -146,7 +146,7 @@ func (u *UI) Run() error {
 	u.gui = g
 	g.SetManagerFunc(u.layout)
 	g.Cursor = false
-	g.Mouse = false
+	g.Mouse = true
 	g.ASCII = false
 
 	if err := u.setKeybindings(g); err != nil {
@@ -341,7 +341,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 	// --- ヘルプポップアップ ---
 	if u.showHelp {
 		pw := 62
-		ph := 29
+		ph := 30
 		px0 := (maxX - pw) / 2
 		py0 := (maxY - ph) / 2
 		if v, err := g.SetView("help", px0, py0, px0+pw, py0+ph, 0); err != nil {
@@ -750,6 +750,7 @@ func (u *UI) drawHelp(g *gocui.Gui) {
 	fmt.Fprintln(v, "  === 操作 ================================================")
 	fmt.Fprintln(v)
 	fmt.Fprintln(v, "  ↑/↓ 手札選択  ←/→ 場札選択  Enter 決定")
+	fmt.Fprintln(v, "  マウスクリック: 手札/場札/ボタンを直接選択")
 	fmt.Fprintln(v, "  l 行動履歴  ? ヘルプ  q 終了  Ctrl+C 強制終了")
 	fmt.Fprintln(v)
 	fmt.Fprintln(v, "  === 出来役一覧 ==========================================")
@@ -1071,19 +1072,19 @@ func (u *UI) drawStatus(g *gocui.Gui) {
 	v.Clear()
 	switch u.phase {
 	case PhasePlayerSelectHand:
-		fmt.Fprint(v, " Up/Down: 選択 | Enter: 決定 | o: オプション | ?: ヘルプ | q: 終了")
+		fmt.Fprint(v, " Up/Down/Click: 選択 | Enter: 決定 | o: オプション | ?: ヘルプ | q: 終了")
 	case PhasePlayerSelectField, PhasePlayerSelectFieldDraw:
-		fmt.Fprint(v, " Left/Right: 場札選択 | Enter: 決定")
+		fmt.Fprint(v, " Left/Right/Click: 場札選択 | Enter: 決定")
 	case PhaseKoiKoi:
-		fmt.Fprint(v, " Left/Right: 選択 | Enter: 決定")
+		fmt.Fprint(v, " Left/Right/Click: 選択 | Enter: 決定")
 	case PhaseCPUKoiKoi:
-		fmt.Fprint(v, " Enter: OK")
+		fmt.Fprint(v, " Enter/Click: OK")
 	case PhaseCPUTurn:
 		fmt.Fprint(v, " CPUが考え中...")
 	case PhaseRoundEnd:
-		fmt.Fprint(v, " Enter: 次の月へ")
+		fmt.Fprint(v, " Enter/Click: 次の月へ")
 	case PhaseGameEnd:
-		fmt.Fprint(v, " Left/Right: 選択 | Enter: 決定")
+		fmt.Fprint(v, " Left/Right/Click: 選択 | Enter: 決定")
 	default:
 		fmt.Fprint(v, " Enter: 続行")
 	}
@@ -1171,6 +1172,27 @@ func (u *UI) setKeybindings(g *gocui.Gui) error {
 	}
 	for _, b := range bindings {
 		if err := g.SetKeybinding("", b.key, gocui.ModNone, b.handler); err != nil {
+			return err
+		}
+	}
+
+	// マウスクリックバインド
+	mouseBindings := []struct {
+		viewName string
+		handler  func(*gocui.Gui, *gocui.View) error
+	}{
+		{"hand", u.handleHandClick},
+		{"field", u.handleFieldClick},
+		{"koikoi", u.handleKoiKoiClick},
+		{"cpukoikoi", u.handleCPUKoiKoiClick},
+		{"roundend", u.handleRoundEndClick},
+		{"gameend", u.handleGameEndClick},
+		{"quitconf", u.handleQuitConfClick},
+		{"options", u.handleOptionsClick},
+		{"optconf", u.handleOptConfClick},
+	}
+	for _, b := range mouseBindings {
+		if err := g.SetKeybinding(b.viewName, gocui.MouseLeft, gocui.ModNone, b.handler); err != nil {
 			return err
 		}
 	}
@@ -1775,4 +1797,263 @@ func capturedNames(cards []Card) string {
 		names = append(names, c.Name)
 	}
 	return strings.Join(names, ", ")
+}
+
+// ---- マウスクリックハンドラ ----
+
+func (u *UI) handleHandClick(g *gocui.Gui, v *gocui.View) error {
+	if u.showQuitConf || u.showOptions || u.showOptConf || u.showLog || u.showHelp {
+		return nil
+	}
+	if u.phase != PhasePlayerSelectHand {
+		return nil
+	}
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	// 行番号はビュー内の相対位置（空行を考慮: 1行目は空行）
+	clickedLine := cy + oy - 1 // 空行分を引く
+	if clickedLine >= 0 && clickedLine < len(u.game.PlayerHand) {
+		u.cursor = clickedLine
+		return u.onSelectHand(g)
+	}
+	return nil
+}
+
+func (u *UI) handleFieldClick(g *gocui.Gui, v *gocui.View) error {
+	if u.showQuitConf || u.showOptions || u.showOptConf || u.showLog || u.showHelp {
+		return nil
+	}
+	if u.phase != PhasePlayerSelectField && u.phase != PhasePlayerSelectFieldDraw {
+		return nil
+	}
+	cx, _ := v.Cursor()
+	ox, _ := v.Origin()
+	clickX := cx + ox - 1 // 先頭スペース分を引く
+
+	// 各場札の位置を計算して、クリック位置からどの札かを特定
+	pos := 0
+	clickedFieldIdx := -1
+	for i, c := range u.game.Field {
+		label := cardLabel(c)
+		labelW := cellWidth(label)
+		if clickX >= pos && clickX < pos+labelW {
+			clickedFieldIdx = i
+			break
+		}
+		pos += labelW + 1 // 札の幅 + スペース
+	}
+
+	if clickedFieldIdx < 0 {
+		return nil
+	}
+
+	// クリックした場札が matchingCards に含まれているか確認
+	clickedCard := u.game.Field[clickedFieldIdx]
+	for mi, m := range u.matchingCards {
+		if m.ID == clickedCard.ID {
+			u.fieldCursor = mi
+			if u.phase == PhasePlayerSelectField {
+				return u.onSelectFieldForHand(g)
+			}
+			return u.onSelectFieldForDraw(g)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleKoiKoiClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	// ボタン行をクリックしたか確認
+	yakuCount := len(u.newYaku)
+	buttonLine := 7 + yakuCount // header + yakus + total + spacing
+
+	if clickedLine == buttonLine {
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 42
+		btnW := cellWidth(" こいこい（続行） ") + 2 + cellWidth(" 勝負（得点確定） ")
+		btnPad := max((innerW-btnW)/2, 0)
+
+		koikoiEnd := btnPad + cellWidth(" こいこい（続行） ")
+		if clickX >= btnPad && clickX < koikoiEnd {
+			u.koikoiCursor = 0
+			return u.onKoiKoiDecision(g)
+		}
+		shoubuStart := koikoiEnd + 2
+		if clickX >= shoubuStart {
+			u.koikoiCursor = 1
+			return u.onKoiKoiDecision(g)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleCPUKoiKoiClick(g *gocui.Gui, _ *gocui.View) error {
+	return u.onCPUKoiKoiOK(g)
+}
+
+func (u *UI) handleRoundEndClick(g *gocui.Gui, _ *gocui.View) error {
+	return u.onNextRound(g)
+}
+
+func (u *UI) handleGameEndClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	// ボタン行は7行目
+	if clickedLine == 7 {
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 42
+		btnW := cellWidth(" 1月から ") + 4 + cellWidth(" 終了する ")
+		btnPad := max((innerW-btnW)/2, 0)
+
+		restartEnd := btnPad + cellWidth(" 1月から ")
+		if clickX >= btnPad && clickX < restartEnd {
+			u.gameEndCursor = 0
+			return u.onGameEndDecision(g)
+		}
+		quitStart := restartEnd + 4
+		if clickX >= quitStart {
+			u.gameEndCursor = 1
+			return u.onGameEndDecision(g)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleQuitConfClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	// ボタン行は5行目
+	if clickedLine == 5 {
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 44
+		btnW := cellWidth(" はい ") + 4 + cellWidth(" いいえ ")
+		btnPad := max((innerW-btnW)/2, 0)
+
+		yesEnd := btnPad + cellWidth(" はい ")
+		if clickX >= btnPad && clickX < yesEnd {
+			u.quitCursor = 0
+			return u.handleEnter(g, nil)
+		}
+		noStart := yesEnd + 4
+		if clickX >= noStart {
+			u.quitCursor = 1
+			return u.handleEnter(g, nil)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleOptionsClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	switch clickedLine {
+	case 1: // ラウンド数行
+		u.optCursor = 0
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		// ◀ または ▶ をクリックで値変更
+		if clickX < 21 {
+			// 左側 → 減らす
+			for i, r := range roundsOptions {
+				if r == u.optRounds && i > 0 {
+					u.optRounds = roundsOptions[i-1]
+					break
+				}
+			}
+		} else {
+			// 右側 → 増やす
+			for i, r := range roundsOptions {
+				if r == u.optRounds && i < len(roundsOptions)-1 {
+					u.optRounds = roundsOptions[i+1]
+					break
+				}
+			}
+		}
+	case 3: // 難易度行
+		u.optCursor = 1
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		if clickX < 21 {
+			for i, d := range diffOptions {
+				if d == u.optDifficulty && i > 0 {
+					u.optDifficulty = diffOptions[i-1]
+					break
+				}
+			}
+		} else {
+			for i, d := range diffOptions {
+				if d == u.optDifficulty && i < len(diffOptions)-1 {
+					u.optDifficulty = diffOptions[i+1]
+					break
+				}
+			}
+		}
+	case 5: // ボタン行
+		u.optCursor = 2
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 42
+		cancelW := cellWidth(" キャンセル ")
+		applyW := cellWidth(" 適用 ")
+		btnW := cancelW + 4 + applyW
+		btnPad := max((innerW-btnW)/2, 0)
+
+		cancelEnd := btnPad + cancelW
+		if clickX >= btnPad && clickX < cancelEnd {
+			u.optBtnCursor = 0
+			return u.handleEnter(g, nil)
+		}
+		applyStart := cancelEnd + 4
+		if clickX >= applyStart {
+			u.optBtnCursor = 1
+			return u.handleEnter(g, nil)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleOptConfClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	// ボタン行は5行目
+	if clickedLine == 5 {
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 44
+		btnW := cellWidth(" はい ") + 4 + cellWidth(" いいえ ")
+		btnPad := max((innerW-btnW)/2, 0)
+
+		yesEnd := btnPad + cellWidth(" はい ")
+		if clickX >= btnPad && clickX < yesEnd {
+			u.optConfCursor = 0
+			return u.handleEnter(g, nil)
+		}
+		noStart := yesEnd + 4
+		if clickX >= noStart {
+			u.optConfCursor = 1
+			return u.handleEnter(g, nil)
+		}
+	}
+	return nil
 }
