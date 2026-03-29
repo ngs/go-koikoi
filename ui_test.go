@@ -3043,3 +3043,570 @@ func TestShowCPUCardWithDelayWithGUI(t *testing.T) {
 
 	// goroutineが起動したことを確認（カバレッジ用）
 }
+
+// --- ビュー作成・描画テスト ---
+
+func TestViewCreationStatus(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// ステータスビューが作成されていることを確認
+	v, err := g.View("status")
+	if err != nil {
+		t.Fatalf("View(status) error: %v", err)
+	}
+	if v == nil {
+		t.Error("status view should be created")
+	}
+
+	// 手札ビューが作成されていることを確認
+	v, err = g.View("hand")
+	if err != nil {
+		t.Fatalf("View(hand) error: %v", err)
+	}
+	if v == nil {
+		t.Error("hand view should be created")
+	}
+
+	// 場札ビューが作成されていることを確認
+	v, err = g.View("field")
+	if err != nil {
+		t.Fatalf("View(field) error: %v", err)
+	}
+	if v == nil {
+		t.Error("field view should be created")
+	}
+}
+
+func TestHandleArrowDown(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.cursor = 0
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	initialCursor := u.cursor
+	if err := u.handleDown(g, nil); err != nil {
+		t.Fatalf("handleDown error: %v", err)
+	}
+
+	// 手札が2枚以上あればカーソルが移動しているはず
+	if len(u.game.PlayerHand) > 1 && u.cursor == initialCursor {
+		t.Errorf("cursor should have moved from %d", initialCursor)
+	}
+}
+
+func TestHandleArrowUp(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	// カーソルを最後に設定
+	u.cursor = len(u.game.PlayerHand) - 1
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	initialCursor := u.cursor
+	if err := u.handleUp(g, nil); err != nil {
+		t.Fatalf("handleUp error: %v", err)
+	}
+
+	// カーソルが上に移動しているはず
+	if initialCursor > 0 && u.cursor >= initialCursor {
+		t.Errorf("cursor should have moved up from %d, got %d", initialCursor, u.cursor)
+	}
+}
+
+func TestToggleHelp(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showHelp = false
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// handleToggleHelp を呼び出してヘルプ表示を切り替える
+	if err := u.handleToggleHelp(g, nil); err != nil {
+		t.Fatalf("handleToggleHelp error: %v", err)
+	}
+
+	if !u.showHelp {
+		t.Error("showHelp should be true after handleToggleHelp")
+	}
+
+	// もう一度呼び出して閉じる
+	if err := u.handleToggleHelp(g, nil); err != nil {
+		t.Fatalf("handleToggleHelp error: %v", err)
+	}
+
+	if u.showHelp {
+		t.Error("showHelp should be false after second handleToggleHelp")
+	}
+}
+
+func TestToggleOptions(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showOptions = false
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// handleToggleOptions を呼び出してオプション表示を切り替える
+	if err := u.handleToggleOptions(g, nil); err != nil {
+		t.Fatalf("handleToggleOptions error: %v", err)
+	}
+
+	if !u.showOptions {
+		t.Error("showOptions should be true after handleToggleOptions")
+	}
+
+	// もう一度呼び出して閉じる
+	if err := u.handleToggleOptions(g, nil); err != nil {
+		t.Fatalf("handleToggleOptions error: %v", err)
+	}
+
+	if u.showOptions {
+		t.Error("showOptions should be false after second handleToggleOptions")
+	}
+}
+
+func TestEscapeClosesPopup(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showHelp = true
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// handleEsc を呼び出してヘルプを閉じる
+	if err := u.handleEsc(g, nil); err != nil {
+		t.Fatalf("handleEsc error: %v", err)
+	}
+
+	if u.showHelp {
+		t.Error("showHelp should be false after handleEsc")
+	}
+}
+
+func TestTestingScreenFieldViewDisplaysCards(t *testing.T) {
+	// field ビューは layout で作成される
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	// 特定のカードを場に配置
+	u.game.Field = []Card{AllCards[0], AllCards[4], AllCards[8]} // 松の光、梅の光、桜の光
+	u.game.PlayerHand = []Card{AllCards[12]}
+	u.game.CPUHand = []Card{AllCards[16]}
+	u.game.Deck = []Card{AllCards[20]}
+	u.phase = PhasePlayerSelectHand
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// field ビューが作成されていることを確認
+	v, err := g.View("field")
+	if err != nil {
+		t.Fatalf("View(field) error: %v", err)
+	}
+	if v == nil {
+		t.Error("field view should be created")
+	}
+}
+
+func TestKoiKoiViewContent(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.PlayerHand = []Card{AllCards[0], AllCards[4]}
+	u.game.PlayerCaptured = cardsFromIDList(0, 8, 28) // 三光用
+	u.game.Deck = []Card{AllCards[12]}
+	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.phase = PhaseKoiKoi
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// koikoi ビューが作成されていることを確認
+	v, err := g.View("koikoi")
+	if err != nil {
+		t.Fatalf("View(koikoi) error: %v", err)
+	}
+	if v == nil {
+		t.Error("koikoi view should be created")
+	}
+}
+
+func TestQuitConfirmationView(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showQuitConf = true
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// quitconf ビューが作成されていることを確認
+	v, err := g.View("quitconf")
+	if err != nil {
+		t.Fatalf("View(quitconf) error: %v", err)
+	}
+	if v == nil {
+		t.Error("quitconf view should be created")
+	}
+}
+
+func TestOptionsViewContent(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showOptions = true
+	u.optRounds = 6
+	u.optDifficulty = DifficultyNormal
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// options ビューが作成されていることを確認
+	v, err := g.View("options")
+	if err != nil {
+		t.Fatalf("View(options) error: %v", err)
+	}
+	if v == nil {
+		t.Error("options view should be created")
+	}
+}
+
+func TestNavigateOptionsWithHandlers(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showOptions = true
+	u.optCursor = 0
+	u.optRounds = 6
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// 右キーでラウンド数を増やす
+	if err := u.handleRight(g, nil); err != nil {
+		t.Fatalf("handleRight error: %v", err)
+	}
+
+	if u.optRounds != 12 {
+		t.Errorf("optRounds = %d, want 12 after handleRight", u.optRounds)
+	}
+
+	// 左キーでラウンド数を減らす
+	if err := u.handleLeft(g, nil); err != nil {
+		t.Fatalf("handleLeft error: %v", err)
+	}
+
+	if u.optRounds != 6 {
+		t.Errorf("optRounds = %d, want 6 after handleLeft", u.optRounds)
+	}
+}
+
+func TestTestingScreenRoundEndViewContent(t *testing.T) {
+	// RoundEnd フェーズでは StartGui がブロックするため、
+	// layout を直接呼び出してビューが作成されることを確認
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.Round = 2
+	u.game.PlayerScore = 5
+	u.game.CPUScore = 3
+	u.roundResult = "あなたの勝ち！ 5文獲得"
+	u.phase = PhaseRoundEnd
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	v, err := g.View("roundend")
+	if err != nil {
+		t.Fatalf("View(roundend) error: %v", err)
+	}
+	if v == nil {
+		t.Error("roundend view should be created")
+	}
+}
+
+func TestTestingScreenGameEndViewContent(t *testing.T) {
+	// GameEnd フェーズでは layout を直接呼び出してテスト
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.Round = 12
+	u.game.PlayerScore = 50
+	u.game.CPUScore = 30
+	u.phase = PhaseGameEnd
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	v, err := g.View("gameend")
+	if err != nil {
+		t.Fatalf("View(gameend) error: %v", err)
+	}
+	if v == nil {
+		t.Error("gameend view should be created")
+	}
+}
+
+func TestTestingScreenCapturedViewContent(t *testing.T) {
+	// mycap ビューは layout で作成される
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.PlayerCaptured = []Card{AllCards[0], AllCards[8]} // 松の光、桜の光
+	u.game.PlayerHand = []Card{AllCards[12]}
+	u.game.CPUHand = []Card{AllCards[16]}
+	u.game.Deck = []Card{AllCards[20]}
+	u.phase = PhasePlayerSelectHand
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// mycap ビューが作成されていることを確認
+	v, err := g.View("mycap")
+	if err != nil {
+		t.Fatalf("View(mycap) error: %v", err)
+	}
+	if v == nil {
+		t.Error("mycap view should be created")
+	}
+}
+
+func TestTestingScreenHelpViewContent(t *testing.T) {
+	// help ビューは layout で作成される
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showHelp = true
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// help ビューが作成されていることを確認
+	v, err := g.View("help")
+	if err != nil {
+		t.Fatalf("View(help) error: %v", err)
+	}
+	if v == nil {
+		t.Error("help view should be created")
+	}
+}
+
+func TestKoiKoiDecisionWithHandlers(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.PlayerHand = []Card{AllCards[0], AllCards[4]}
+	u.game.PlayerCaptured = cardsFromIDList(0, 8, 28)
+	u.game.Deck = []Card{AllCards[12]}
+	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.phase = PhaseKoiKoi
+	u.koikoiCursor = 0
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// 右キーでカーソル移動（こいこい→勝負）
+	if err := u.handleRight(g, nil); err != nil {
+		t.Fatalf("handleRight error: %v", err)
+	}
+
+	if u.koikoiCursor != 1 {
+		t.Errorf("koikoiCursor = %d, want 1 after handleRight", u.koikoiCursor)
+	}
+
+	// 左キーでカーソル移動（勝負→こいこい）
+	if err := u.handleLeft(g, nil); err != nil {
+		t.Fatalf("handleLeft error: %v", err)
+	}
+
+	if u.koikoiCursor != 0 {
+		t.Errorf("koikoiCursor = %d, want 0 after handleLeft", u.koikoiCursor)
+	}
+}
+
+func TestTestingScreenParentDeterminationView(t *testing.T) {
+	// parentdet ビューは layout で作成される
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// parentdet ビューが作成されていることを確認
+	v, err := g.View("parentdet")
+	if err != nil {
+		t.Fatalf("View(parentdet) error: %v", err)
+	}
+	if v == nil {
+		t.Error("parentdet view should be created")
+	}
+}
+
+func TestTestingScreenLogViewContent(t *testing.T) {
+	// log ビューは layout で作成される
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showLog = true
+	u.logLines = []string{"[12:00] プレイヤーが松の光を出した", "[12:01] CPUが梅のカスを出した"}
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// log ビューが作成されていることを確認
+	v, err := g.View("log")
+	if err != nil {
+		t.Fatalf("View(log) error: %v", err)
+	}
+	if v == nil {
+		t.Error("log view should be created")
+	}
+}
+
+func TestToggleLog(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showLog = false
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// handleToggleLog を呼び出してログ表示を切り替える
+	if err := u.handleToggleLog(g, nil); err != nil {
+		t.Fatalf("handleToggleLog error: %v", err)
+	}
+
+	if !u.showLog {
+		t.Error("showLog should be true after handleToggleLog")
+	}
+
+	// もう一度呼び出して閉じる
+	if err := u.handleToggleLog(g, nil); err != nil {
+		t.Fatalf("handleToggleLog error: %v", err)
+	}
+
+	if u.showLog {
+		t.Error("showLog should be false after second handleToggleLog")
+	}
+}
+
+func TestQuitConfirmNavigate(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.StartRound()
+	u.phase = PhasePlayerSelectHand
+	u.showQuitConf = true
+	u.quitCursor = 0
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// 右キーでカーソル移動（はい→いいえ）
+	if err := u.handleRight(g, nil); err != nil {
+		t.Fatalf("handleRight error: %v", err)
+	}
+
+	if u.quitCursor != 1 {
+		t.Errorf("quitCursor = %d, want 1 after handleRight", u.quitCursor)
+	}
+
+	// 左キーでカーソル移動（いいえ→はい）
+	if err := u.handleLeft(g, nil); err != nil {
+		t.Fatalf("handleLeft error: %v", err)
+	}
+
+	if u.quitCursor != 0 {
+		t.Errorf("quitCursor = %d, want 0 after handleLeft", u.quitCursor)
+	}
+}
+
+func TestTestingScreenGameEndNavigate(t *testing.T) {
+	// GameEnd フェーズでは StartGui がブロックするため、
+	// handleRight を直接呼び出してテスト
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.Round = 12
+	u.phase = PhaseGameEnd
+	u.gameEndCursor = 0
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// handleRight を呼び出してカーソル移動をテスト
+	if err := u.handleRight(g, nil); err != nil {
+		t.Fatalf("handleRight error: %v", err)
+	}
+
+	if u.gameEndCursor != 1 {
+		t.Errorf("gameEndCursor = %d, want 1 after handleRight", u.gameEndCursor)
+	}
+}
+
+func TestTestingScreenCPUKoiKoiViewContent(t *testing.T) {
+	// cpukoikoi ビューは layout で作成される
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.PlayerHand = []Card{AllCards[0]}
+	u.game.CPUHand = []Card{AllCards[4]}
+	u.game.CPUCaptured = cardsFromIDList(0, 8, 28)
+	u.cpuKoiKoiYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.phase = PhaseCPUKoiKoi
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// cpukoikoi ビューが作成されていることを確認
+	v, err := g.View("cpukoikoi")
+	if err != nil {
+		t.Fatalf("View(cpukoikoi) error: %v", err)
+	}
+	if v == nil {
+		t.Error("cpukoikoi view should be created")
+	}
+}
