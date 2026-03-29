@@ -99,7 +99,8 @@ type YakuReach struct {
 }
 
 // CheckReach 獲得札からリーチ中の役を判定する
-func CheckReach(captured []Card) []YakuReach {
+// opponentCaptured: 相手の獲得札（不足札が相手に取られていたらリーチから除外）
+func CheckReach(captured, opponentCaptured []Card) []YakuReach {
 	var reaches []YakuReach
 
 	hikari := filterByType(captured, Hikari)
@@ -111,6 +112,7 @@ func CheckReach(captured []Card) []YakuReach {
 	taneIDs := cardIDs(tane)
 	tanzakuIDs := cardIDs(tanzaku)
 	allIDs := cardIDs(captured)
+	opponentIDs := cardIDs(opponentCaptured)
 
 	existingYaku := CheckYaku(captured)
 	hasYaku := func(name string) bool {
@@ -122,10 +124,11 @@ func CheckReach(captured []Card) []YakuReach {
 		return false
 	}
 
+	// 不足札を返す（相手が持っている札は除外）
 	missingCards := func(required []int, have []int) []Card {
 		var cards []Card
 		for _, r := range required {
-			if !contains(have, r) {
+			if !contains(have, r) && !contains(opponentIDs, r) {
 				cards = append(cards, AllCards[r])
 			}
 		}

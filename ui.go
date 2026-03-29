@@ -752,7 +752,7 @@ func (u *UI) drawMyCaptured(g *gocui.Gui) {
 	writeCapturedDetail(v, u.game.PlayerCaptured)
 
 	// リーチ表示
-	reaches := CheckReach(u.game.PlayerCaptured)
+	reaches := CheckReach(u.game.PlayerCaptured, u.game.CPUCaptured)
 	if len(reaches) > 0 {
 		fmt.Fprintln(v)
 		fmt.Fprintf(v, " %s── リーチ ──%s\n", ansiDim, ansiReset)
