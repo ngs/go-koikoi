@@ -1850,6 +1850,8 @@ var parentDetAnimRunning atomic.Bool
 
 func (u *UI) startParentDetAnimation(g *gocui.Gui) {
 	if g == nil {
+		// テスト時は同期的に1回だけ実行
+		u.executeParentDetSpin(nil, 0)
 		return
 	}
 	if !parentDetAnimRunning.CompareAndSwap(false, true) {
@@ -1857,47 +1859,66 @@ func (u *UI) startParentDetAnimation(g *gocui.Gui) {
 	}
 	go func() {
 		defer parentDetAnimRunning.Store(false)
-		cardIndex := 0
-		for u.parentDetStep == 0 && u.phase == PhaseParentDetermination {
-			card := AllCards[cardIndex%len(AllCards)]
-			u.parentDetDisplay = &card
-			if u.gui != nil {
-				u.gui.Update(func(_ *gocui.Gui) error { return nil })
-			}
-			time.Sleep(80 * time.Millisecond)
-			cardIndex++
-		}
+		u.executeParentDetSpin(g, 80*time.Millisecond)
 	}()
+}
+
+// executeParentDetSpin 親決めアニメーションのスピンロジック（テスト可能）
+func (u *UI) executeParentDetSpin(g *gocui.Gui, spinDelay time.Duration) {
+	cardIndex := 0
+	for u.parentDetStep == 0 && u.phase == PhaseParentDetermination {
+		card := AllCards[cardIndex%len(AllCards)]
+		u.parentDetDisplay = &card
+		if g != nil && u.gui != nil {
+			u.gui.Update(func(_ *gocui.Gui) error { return nil })
+		}
+		if spinDelay > 0 {
+			time.Sleep(spinDelay)
+		} else {
+			// テスト時は1回だけ実行して終了
+			break
+		}
+		cardIndex++
+	}
 }
 
 func (u *UI) showCPUCardWithDelay(g *gocui.Gui) {
 	if g == nil {
 		// テスト時はアニメーションをスキップして即座に結果表示
-		u.parentDetStep = 2
+		u.executeCPUCardReveal(nil, 0, 0)
 		return
 	}
 	go func() {
-		// CPUの札をルーレット風に数回表示
-		for i := 0; i < 10; i++ {
-			card := AllCards[cryptoIntn(len(AllCards))]
-			u.parentDetDisplay = &card
-			if u.gui != nil {
-				u.gui.Update(func(_ *gocui.Gui) error { return nil })
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		// 最終的なCPUの札を表示
-		u.parentDetDisplay = u.game.CPUDrawnCard
-		if u.gui != nil {
-			u.gui.Update(func(_ *gocui.Gui) error { return nil })
-		}
-		time.Sleep(500 * time.Millisecond)
-		// 結果表示へ
-		u.parentDetStep = 2
-		if u.gui != nil {
-			u.gui.Update(func(_ *gocui.Gui) error { return nil })
-		}
+		u.executeCPUCardReveal(g, 100*time.Millisecond, 500*time.Millisecond)
 	}()
+}
+
+// executeCPUCardReveal CPUの札を公開するロジック（テスト可能）
+func (u *UI) executeCPUCardReveal(g *gocui.Gui, spinDelay, finalDelay time.Duration) {
+	// CPUの札をルーレット風に数回表示
+	for range 10 {
+		card := AllCards[cryptoIntn(len(AllCards))]
+		u.parentDetDisplay = &card
+		if g != nil && u.gui != nil {
+			u.gui.Update(func(_ *gocui.Gui) error { return nil })
+		}
+		if spinDelay > 0 {
+			time.Sleep(spinDelay)
+		}
+	}
+	// 最終的なCPUの札を表示
+	u.parentDetDisplay = u.game.CPUDrawnCard
+	if g != nil && u.gui != nil {
+		u.gui.Update(func(_ *gocui.Gui) error { return nil })
+	}
+	if finalDelay > 0 {
+		time.Sleep(finalDelay)
+	}
+	// 結果表示へ
+	u.parentDetStep = 2
+	if g != nil && u.gui != nil {
+		u.gui.Update(func(_ *gocui.Gui) error { return nil })
+	}
 }
 
 // ---- CPUターン ----

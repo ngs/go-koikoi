@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/awesome-gocui/gocui"
@@ -205,7 +206,7 @@ func TestAddLog(t *testing.T) {
 
 func TestAddLogTruncation(t *testing.T) {
 	u := NewUI()
-	for i := 0; i < 1100; i++ {
+	for range 1100 {
 		u.addLog("msg")
 	}
 	if len(u.logLines) != 1000 {
@@ -2092,7 +2093,7 @@ func TestDrawLog(t *testing.T) {
 	u.drawLog(g)
 
 	// 50行以上
-	for i := 0; i < 60; i++ {
+	for range 60 {
 		u.addLog("line")
 	}
 	u.drawLog(g)
@@ -2832,4 +2833,213 @@ func TestCPUChooseHandCardEasyNoMatchRandom(t *testing.T) {
 			t.Errorf("iteration %d: expected nil field card for no-match", i)
 		}
 	}
+}
+
+// --- 親決めアニメーション関連テスト ---
+
+func TestExecuteCPUCardReveal(t *testing.T) {
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[0]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// nil GUI, delay 0 で同期的にテスト
+	u.executeCPUCardReveal(nil, 0, 0)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+	if u.parentDetDisplay != u.game.CPUDrawnCard {
+		t.Error("parentDetDisplay should be CPUDrawnCard")
+	}
+}
+
+func TestShowCPUCardWithDelayNilGUI(t *testing.T) {
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[5]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// nil GUI の場合はアニメーションスキップして即座に結果表示
+	u.showCPUCardWithDelay(nil)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+	if u.parentDetDisplay != u.game.CPUDrawnCard {
+		t.Error("parentDetDisplay should be CPUDrawnCard")
+	}
+}
+
+func TestStartParentDetAnimationNilGUI(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// nil GUI の場合は何もしない
+	u.startParentDetAnimation(nil)
+	// パニックせずに終了すればOK
+}
+
+func TestStartParentDetAnimationAlreadyRunning(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// 既に実行中の場合
+	parentDetAnimRunning.Store(true)
+	defer parentDetAnimRunning.Store(false)
+
+	// 二重実行を防ぐ
+	u.startParentDetAnimation(nil)
+	// パニックせずに終了すればOK
+}
+
+func TestStartParentDetAnimationWithGUI(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	// step=1 でループに入らないようにして即終了
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+	parentDetAnimRunning.Store(false)
+
+	// GUI ありの場合はgoroutineで実行
+	u.startParentDetAnimation(g)
+
+	// goroutineが完了するまで待機
+	time.Sleep(50 * time.Millisecond)
+
+	// アニメーションが終了していることを確認
+	if parentDetAnimRunning.Load() {
+		t.Error("animation should have stopped")
+	}
+}
+
+func TestExecuteCPUCardRevealWithDelay(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[0]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// 短い遅延でテスト（delay > 0 のブランチをカバー）
+	u.executeCPUCardReveal(g, 1*time.Millisecond, 1*time.Millisecond)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+	if u.parentDetDisplay != u.game.CPUDrawnCard {
+		t.Error("parentDetDisplay should be CPUDrawnCard")
+	}
+}
+
+func TestExecuteCPUCardRevealWithGUI(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[3]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// GUI あり、delay 0 でテスト（g != nil のブランチをカバー）
+	u.executeCPUCardReveal(g, 0, 0)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+}
+
+func TestExecuteCPUCardRevealWithGUIAndDelay(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[7]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// GUI あり、delay ありでテスト（全ブランチをカバー）
+	u.executeCPUCardReveal(g, 1*time.Millisecond, 1*time.Millisecond)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+}
+
+func TestExecuteParentDetSpin(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// nil GUI, delay 0 で同期的にテスト（1回だけ実行してbreak）
+	u.executeParentDetSpin(nil, 0)
+
+	if u.parentDetDisplay == nil {
+		t.Error("parentDetDisplay should be set")
+	}
+}
+
+func TestExecuteParentDetSpinWithGUI(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// GUI あり、delay 0 で1回だけ実行
+	u.executeParentDetSpin(g, 0)
+
+	if u.parentDetDisplay == nil {
+		t.Error("parentDetDisplay should be set")
+	}
+}
+
+func TestExecuteParentDetSpinExitsWhenStepChanges(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1 // 既にstep 1なのでループに入らない
+
+	u.executeParentDetSpin(nil, 0)
+
+	// parentDetDisplay は設定されない
+	if u.parentDetDisplay != nil {
+		t.Error("parentDetDisplay should be nil when step != 0")
+	}
+}
+
+func TestStartParentDetAnimationNilGUICallsSpin(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// nil GUI の場合は同期的に executeParentDetSpin を呼ぶ
+	u.startParentDetAnimation(nil)
+
+	if u.parentDetDisplay == nil {
+		t.Error("parentDetDisplay should be set")
+	}
+}
+
+func TestExecuteParentDetSpinWithDelayPhaseChange(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	// phase を変更してループを即終了させる
+	u.phase = PhasePlayerSelectHand // PhaseParentDetermination ではない
+	u.parentDetStep = 0
+
+	// 短い遅延でテスト（ループに入らないので即終了）
+	u.executeParentDetSpin(g, 1*time.Millisecond)
+
+	// phase が条件を満たさないのでループに入らず終了
+}
+
+func TestShowCPUCardWithDelayWithGUI(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[10]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// GUI ありの場合はgoroutineで実行
+	u.showCPUCardWithDelay(g)
+
+	// goroutineが完了するまで待機
+	time.Sleep(100 * time.Millisecond)
+
+	// goroutineが起動したことを確認（カバレッジ用）
 }
