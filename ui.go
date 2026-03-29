@@ -21,7 +21,8 @@ const (
 type Phase int
 
 const (
-	PhasePlayerSelectHand Phase = iota
+	PhaseParentDetermination Phase = iota
+	PhasePlayerSelectHand
 	PhasePlayerSelectField
 	PhasePlayerDrawResult
 	PhasePlayerSelectFieldDraw
@@ -36,6 +37,9 @@ const (
 	msgPlayerWin = "あなたの勝ちです！おめでとうございます！"
 	msgCPUWin    = "CPUの勝ちです。次は頑張りましょう！"
 	msgDraw      = "引き分けです！"
+
+	labelCancel = " キャンセル "
+	labelApply  = " 適用 "
 )
 
 type UI struct {
@@ -65,6 +69,10 @@ type UI struct {
 	optDifficulty Difficulty // オプション: 難易度
 	showOptConf   bool       // オプション適用確認ポップアップ
 	optConfCursor int        // 適用確認カーソル (0=はい, 1=いいえ)
+
+	// 親決めアニメーション
+	parentDetStep    int   // 0=プレイヤー札回転中, 1=CPU札表示中, 2=結果表示
+	parentDetDisplay *Card // 回転中に表示する札
 
 	// 設定・保存パス
 	configDir    string
@@ -111,9 +119,24 @@ func (u *UI) restoreSave(sd *SaveData) {
 
 func (u *UI) newGame(rounds int) {
 	u.game = NewGame(rounds)
-	u.game.StartRound()
-	u.addLog(fmt.Sprintf("--- %s 開始 ---", u.roundName()))
-	u.setInitialPhase()
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+	u.parentDetDisplay = nil
+}
+
+func (u *UI) logParentDetermination() {
+	if u.game.PlayerDrawnCard == nil || u.game.CPUDrawnCard == nil {
+		return
+	}
+	playerCard := u.game.PlayerDrawnCard
+	cpuCard := u.game.CPUDrawnCard
+	u.addLog("--- 親決め ---")
+	u.addLog(fmt.Sprintf("  あなた: %s  CPU: %s", playerCard.Name, cpuCard.Name))
+	if u.game.NextParentIsPlayer {
+		u.addLog("  → あなたが親（先攻）")
+	} else {
+		u.addLog("  → CPUが親（先攻）")
+	}
 }
 
 func (u *UI) setInitialPhase() {
@@ -146,7 +169,7 @@ func (u *UI) Run() error {
 	u.gui = g
 	g.SetManagerFunc(u.layout)
 	g.Cursor = false
-	g.Mouse = false
+	g.Mouse = true
 	g.ASCII = false
 
 	if err := u.setKeybindings(g); err != nil {
@@ -341,7 +364,7 @@ func (u *UI) layout(g *gocui.Gui) error {
 	// --- ヘルプポップアップ ---
 	if u.showHelp {
 		pw := 62
-		ph := 29
+		ph := 30
 		px0 := (maxX - pw) / 2
 		py0 := (maxY - ph) / 2
 		if v, err := g.SetView("help", px0, py0, px0+pw, py0+ph, 0); err != nil {
@@ -437,6 +460,30 @@ func (u *UI) layout(g *gocui.Gui) error {
 	} else {
 		_ = g.DeleteView("koikoi")
 		_ = g.DeleteView("koikoi_t")
+	}
+
+	// --- 親決めポップアップ ---
+	if u.phase == PhaseParentDetermination {
+		pw := 44
+		ph := 11
+		px0 := (maxX - pw) / 2
+		py0 := (maxY - ph) / 2
+		if v, err := g.SetView("parentdet", px0, py0, px0+pw, py0+ph, 0); err != nil {
+			if !errors.Is(err, gocui.ErrUnknownView) {
+				return err
+			}
+			v.Frame = true
+			v.FrameRunes = []rune{'━', '┃', '┏', '┓', '┗', '┛', '┏', '┓', '┏', '┗', '┏'}
+		}
+		setOverlayTitle(g, "parentdet", px0, py0, px0+pw, " 親決め ")
+		u.drawParentDetermination(g)
+		// アニメーション開始
+		if u.parentDetStep == 0 {
+			u.startParentDetAnimation(g)
+		}
+	} else {
+		_ = g.DeleteView("parentdet")
+		_ = g.DeleteView("parentdet_t")
 	}
 
 	// --- CPUこいこいポップアップ ---
@@ -705,7 +752,7 @@ func (u *UI) drawMyCaptured(g *gocui.Gui) {
 	writeCapturedDetail(v, u.game.PlayerCaptured)
 
 	// リーチ表示
-	reaches := CheckReach(u.game.PlayerCaptured)
+	reaches := CheckReach(u.game.PlayerCaptured, u.game.CPUCaptured)
 	if len(reaches) > 0 {
 		fmt.Fprintln(v)
 		fmt.Fprintf(v, " %s── リーチ ──%s\n", ansiDim, ansiReset)
@@ -750,6 +797,7 @@ func (u *UI) drawHelp(g *gocui.Gui) {
 	fmt.Fprintln(v, "  === 操作 ================================================")
 	fmt.Fprintln(v)
 	fmt.Fprintln(v, "  ↑/↓ 手札選択  ←/→ 場札選択  Enter 決定")
+	fmt.Fprintln(v, "  マウスクリック: 手札/場札/ボタンを直接選択")
 	fmt.Fprintln(v, "  l 行動履歴  ? ヘルプ  q 終了  Ctrl+C 強制終了")
 	fmt.Fprintln(v)
 	fmt.Fprintln(v, "  === 出来役一覧 ==========================================")
@@ -814,16 +862,16 @@ func (u *UI) drawOptions(g *gocui.Gui) {
 	fmt.Fprintln(v)
 
 	// キャンセル / 適用ボタン
-	cancelLabel := " キャンセル "
-	applyLabel := " 適用 "
+	cancelStr := labelCancel
+	applyStr := labelApply
 	if u.optCursor == 2 && u.optBtnCursor == 0 {
-		cancelLabel = ansiReverse + cancelLabel + ansiReset
+		cancelStr = ansiReverse + cancelStr + ansiReset
 	}
 	if u.optCursor == 2 && u.optBtnCursor == 1 {
-		applyLabel = ansiReverse + applyLabel + ansiReset
+		applyStr = ansiReverse + applyStr + ansiReset
 	}
-	btnLine := cancelLabel + "    " + applyLabel
-	btnW := cellWidth(" キャンセル ") + 4 + cellWidth(" 適用 ")
+	btnLine := cancelStr + "    " + applyStr
+	btnW := cellWidth(labelCancel) + 4 + cellWidth(labelApply)
 	btnPad := max((innerW-btnW)/2, 0)
 	fmt.Fprintln(v, strings.Repeat(" ", btnPad)+btnLine)
 	fmt.Fprintln(v)
@@ -944,6 +992,71 @@ func (u *UI) drawKoiKoi(g *gocui.Gui) {
 	fmt.Fprintln(v, centerPad("←/→:選択  Enter:決定", innerW))
 }
 
+func (u *UI) drawParentDetermination(g *gocui.Gui) {
+	v, _ := g.View("parentdet")
+	if v == nil {
+		return
+	}
+	v.Clear()
+
+	innerW := 42
+
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad("山札から札を引いて親を決めます", innerW))
+	fmt.Fprintln(v)
+
+	switch u.parentDetStep {
+	case 0:
+		// プレイヤーの札が回転中
+		displayCard := "？？？"
+		if u.parentDetDisplay != nil {
+			displayCard = u.parentDetDisplay.Name
+		}
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("あなた: %s", displayCard), innerW))
+		fmt.Fprintln(v, centerPad("CPU:    ---", innerW))
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("", innerW))
+		fmt.Fprintln(v)
+		stopLabel := ansiReverse + " 止める " + ansiReset
+		stopW := cellWidth(" 止める ")
+		stopPad := max((innerW-stopW)/2, 0)
+		fmt.Fprintln(v, strings.Repeat(" ", stopPad)+stopLabel)
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("Enter:止める", innerW))
+	case 1:
+		// CPUの札を表示中（ディレイ後に結果へ）
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("あなた: %s", u.game.PlayerDrawnCard.Name), innerW))
+		displayCard := "？？？"
+		if u.parentDetDisplay != nil {
+			displayCard = u.parentDetDisplay.Name
+		}
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("CPU:    %s", displayCard), innerW))
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("", innerW))
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("", innerW))
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("", innerW))
+	default:
+		// 結果表示
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("あなた: %s", u.game.PlayerDrawnCard.Name), innerW))
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("CPU:    %s", u.game.CPUDrawnCard.Name), innerW))
+		fmt.Fprintln(v)
+		if u.game.NextParentIsPlayer {
+			fmt.Fprintln(v, centerPad("→ あなたが親（先攻）です", innerW))
+		} else {
+			fmt.Fprintln(v, centerPad("→ CPUが親（先攻）です", innerW))
+		}
+		fmt.Fprintln(v)
+		okLabel := ansiReverse + "  OK  " + ansiReset
+		okW := cellWidth("  OK  ")
+		okPad := max((innerW-okW)/2, 0)
+		fmt.Fprintln(v, strings.Repeat(" ", okPad)+okLabel)
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("Enter:続ける", innerW))
+	}
+}
+
 func (u *UI) drawCPUKoiKoi(g *gocui.Gui) {
 	v, _ := g.View("cpukoikoi")
 	if v == nil {
@@ -1047,19 +1160,14 @@ func (u *UI) applyOptions() error {
 
 	// ゲームリセット
 	u.game = NewGame(u.settings.Rounds)
-	u.game.StartRound()
 	u.logLines = nil
 	u.addLog(fmt.Sprintf("--- 設定変更: %dラウンド / %s ---", u.settings.Rounds, u.difficulty.Label()))
-	u.addLog(fmt.Sprintf("--- %s 開始 ---", u.roundName()))
 	u.cursor = 0
 	u.showOptions = false
 	u.showOptConf = false
-
-	if u.game.IsPlayerTurn {
-		u.phase = PhasePlayerSelectHand
-	} else {
-		u.phase = PhaseCPUTurn
-	}
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+	u.parentDetDisplay = nil
 	return nil
 }
 
@@ -1070,20 +1178,29 @@ func (u *UI) drawStatus(g *gocui.Gui) {
 	}
 	v.Clear()
 	switch u.phase {
+	case PhaseParentDetermination:
+		switch u.parentDetStep {
+		case 0:
+			fmt.Fprint(v, " Enter/Click: 止める")
+		case 1:
+			fmt.Fprint(v, " CPUの札を引いています...")
+		default:
+			fmt.Fprint(v, " Enter/Click: 続ける")
+		}
 	case PhasePlayerSelectHand:
-		fmt.Fprint(v, " Up/Down: 選択 | Enter: 決定 | o: オプション | ?: ヘルプ | q: 終了")
+		fmt.Fprint(v, " Up/Down/Click: 選択 | Enter: 決定 | o: オプション | ?: ヘルプ | q: 終了")
 	case PhasePlayerSelectField, PhasePlayerSelectFieldDraw:
-		fmt.Fprint(v, " Left/Right: 場札選択 | Enter: 決定")
+		fmt.Fprint(v, " Left/Right/Click: 場札選択 | Enter: 決定")
 	case PhaseKoiKoi:
-		fmt.Fprint(v, " Left/Right: 選択 | Enter: 決定")
+		fmt.Fprint(v, " Left/Right/Click: 選択 | Enter: 決定")
 	case PhaseCPUKoiKoi:
-		fmt.Fprint(v, " Enter: OK")
+		fmt.Fprint(v, " Enter/Click: OK")
 	case PhaseCPUTurn:
 		fmt.Fprint(v, " CPUが考え中...")
 	case PhaseRoundEnd:
-		fmt.Fprint(v, " Enter: 次の月へ")
+		fmt.Fprint(v, " Enter/Click: 次の月へ")
 	case PhaseGameEnd:
-		fmt.Fprint(v, " Left/Right: 選択 | Enter: 決定")
+		fmt.Fprint(v, " Left/Right/Click: 選択 | Enter: 決定")
 	default:
 		fmt.Fprint(v, " Enter: 続行")
 	}
@@ -1171,6 +1288,28 @@ func (u *UI) setKeybindings(g *gocui.Gui) error {
 	}
 	for _, b := range bindings {
 		if err := g.SetKeybinding("", b.key, gocui.ModNone, b.handler); err != nil {
+			return err
+		}
+	}
+
+	// マウスクリックバインド
+	mouseBindings := []struct {
+		viewName string
+		handler  func(*gocui.Gui, *gocui.View) error
+	}{
+		{"hand", u.handleHandClick},
+		{"field", u.handleFieldClick},
+		{"koikoi", u.handleKoiKoiClick},
+		{"cpukoikoi", u.handleCPUKoiKoiClick},
+		{"parentdet", u.handleParentDetClick},
+		{"roundend", u.handleRoundEndClick},
+		{"gameend", u.handleGameEndClick},
+		{"quitconf", u.handleQuitConfClick},
+		{"options", u.handleOptionsClick},
+		{"optconf", u.handleOptConfClick},
+	}
+	for _, b := range mouseBindings {
+		if err := g.SetKeybinding(b.viewName, gocui.MouseLeft, gocui.ModNone, b.handler); err != nil {
 			return err
 		}
 	}
@@ -1476,6 +1615,8 @@ func (u *UI) handleEnter(g *gocui.Gui, _ *gocui.View) error {
 		return nil
 	}
 	switch u.phase {
+	case PhaseParentDetermination:
+		return u.onParentDeterminationOK(g)
 	case PhasePlayerSelectHand:
 		return u.onSelectHand(g)
 	case PhasePlayerSelectField:
@@ -1497,6 +1638,32 @@ func (u *UI) handleEnter(g *gocui.Gui, _ *gocui.View) error {
 }
 
 // ---- フェーズ遷移 ----
+
+func (u *UI) onParentDeterminationOK(g *gocui.Gui) error {
+	switch u.parentDetStep {
+	case 0:
+		// プレイヤーの札確定 → CPUの札表示へ
+		u.parentDetDisplay = u.game.PlayerDrawnCard
+		u.parentDetStep = 1
+		u.showCPUCardWithDelay(g)
+		return nil
+	case 1:
+		// CPUの札表示中は何もしない
+		return nil
+	default:
+		// 結果表示後 → ゲーム開始
+		u.logParentDetermination()
+		u.game.StartRound()
+		u.addLog(fmt.Sprintf("--- %s 開始 ---", u.roundName()))
+		u.cursor = 0
+		if u.game.IsPlayerTurn {
+			u.phase = PhasePlayerSelectHand
+		} else {
+			u.phase = PhaseCPUTurn
+		}
+		return nil
+	}
+}
 
 func (u *UI) onSelectHand(g *gocui.Gui) error {
 	if len(u.game.PlayerHand) == 0 {
@@ -1669,15 +1836,89 @@ func (u *UI) onGameEndDecision(_ *gocui.Gui) error {
 	}
 	// 1月から再スタート
 	u.game = NewGame(u.game.MaxRounds)
-	u.game.StartRound()
-	u.cursor = 0
 	u.addLog("--- 1月から再スタート ---")
-	if u.game.IsPlayerTurn {
-		u.phase = PhasePlayerSelectHand
-	} else {
-		u.phase = PhaseCPUTurn
-	}
+	u.cursor = 0
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+	u.parentDetDisplay = nil
 	return nil
+}
+
+// ---- 親決めアニメーション ----
+
+var parentDetAnimRunning atomic.Bool
+
+func (u *UI) startParentDetAnimation(g *gocui.Gui) {
+	if g == nil {
+		// テスト時は同期的に1回だけ実行
+		u.executeParentDetSpin(nil, 0)
+		return
+	}
+	if !parentDetAnimRunning.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer parentDetAnimRunning.Store(false)
+		u.executeParentDetSpin(g, 80*time.Millisecond)
+	}()
+}
+
+// executeParentDetSpin 親決めアニメーションのスピンロジック（テスト可能）
+func (u *UI) executeParentDetSpin(g *gocui.Gui, spinDelay time.Duration) {
+	cardIndex := 0
+	for u.parentDetStep == 0 && u.phase == PhaseParentDetermination {
+		card := AllCards[cardIndex%len(AllCards)]
+		u.parentDetDisplay = &card
+		if g != nil && u.gui != nil {
+			u.gui.Update(func(_ *gocui.Gui) error { return nil })
+		}
+		if spinDelay > 0 {
+			time.Sleep(spinDelay)
+		} else {
+			// テスト時は1回だけ実行して終了
+			break
+		}
+		cardIndex++
+	}
+}
+
+func (u *UI) showCPUCardWithDelay(g *gocui.Gui) {
+	if g == nil {
+		// テスト時はアニメーションをスキップして即座に結果表示
+		u.executeCPUCardReveal(nil, 0, 0)
+		return
+	}
+	go func() {
+		u.executeCPUCardReveal(g, 100*time.Millisecond, 500*time.Millisecond)
+	}()
+}
+
+// executeCPUCardReveal CPUの札を公開するロジック（テスト可能）
+func (u *UI) executeCPUCardReveal(g *gocui.Gui, spinDelay, finalDelay time.Duration) {
+	// CPUの札をルーレット風に数回表示
+	for range 10 {
+		card := AllCards[cryptoIntn(len(AllCards))]
+		u.parentDetDisplay = &card
+		if g != nil && u.gui != nil {
+			u.gui.Update(func(_ *gocui.Gui) error { return nil })
+		}
+		if spinDelay > 0 {
+			time.Sleep(spinDelay)
+		}
+	}
+	// 最終的なCPUの札を表示
+	u.parentDetDisplay = u.game.CPUDrawnCard
+	if g != nil && u.gui != nil {
+		u.gui.Update(func(_ *gocui.Gui) error { return nil })
+	}
+	if finalDelay > 0 {
+		time.Sleep(finalDelay)
+	}
+	// 結果表示へ
+	u.parentDetStep = 2
+	if g != nil && u.gui != nil {
+		u.gui.Update(func(_ *gocui.Gui) error { return nil })
+	}
 }
 
 // ---- CPUターン ----
@@ -1775,4 +2016,267 @@ func capturedNames(cards []Card) string {
 		names = append(names, c.Name)
 	}
 	return strings.Join(names, ", ")
+}
+
+// ---- マウスクリックハンドラ ----
+
+func (u *UI) handleHandClick(g *gocui.Gui, v *gocui.View) error {
+	if u.showQuitConf || u.showOptions || u.showOptConf || u.showLog || u.showHelp {
+		return nil
+	}
+	if u.phase != PhasePlayerSelectHand {
+		return nil
+	}
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	// 行番号はビュー内の相対位置（空行を考慮: 1行目は空行）
+	clickedLine := cy + oy - 1 // 空行分を引く
+	if clickedLine >= 0 && clickedLine < len(u.game.PlayerHand) {
+		u.cursor = clickedLine
+		return u.onSelectHand(g)
+	}
+	return nil
+}
+
+func (u *UI) handleFieldClick(g *gocui.Gui, v *gocui.View) error {
+	if u.showQuitConf || u.showOptions || u.showOptConf || u.showLog || u.showHelp {
+		return nil
+	}
+	if u.phase != PhasePlayerSelectField && u.phase != PhasePlayerSelectFieldDraw {
+		return nil
+	}
+	cx, _ := v.Cursor()
+	ox, _ := v.Origin()
+	clickX := cx + ox - 1 // 先頭スペース分を引く
+
+	// 各場札の位置を計算して、クリック位置からどの札かを特定
+	pos := 0
+	clickedFieldIdx := -1
+	for i, c := range u.game.Field {
+		label := cardLabel(c)
+		labelW := cellWidth(label)
+		if clickX >= pos && clickX < pos+labelW {
+			clickedFieldIdx = i
+			break
+		}
+		pos += labelW + 1 // 札の幅 + スペース
+	}
+
+	if clickedFieldIdx < 0 {
+		return nil
+	}
+
+	// クリックした場札が matchingCards に含まれているか確認
+	clickedCard := u.game.Field[clickedFieldIdx]
+	for mi, m := range u.matchingCards {
+		if m.ID == clickedCard.ID {
+			u.fieldCursor = mi
+			if u.phase == PhasePlayerSelectField {
+				return u.onSelectFieldForHand(g)
+			}
+			return u.onSelectFieldForDraw(g)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleKoiKoiClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	// ボタン行をクリックしたか確認
+	yakuCount := len(u.newYaku)
+	buttonLine := 7 + yakuCount // header + yakus + total + spacing
+
+	if clickedLine == buttonLine {
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 42
+		btnW := cellWidth(" こいこい（続行） ") + 2 + cellWidth(" 勝負（得点確定） ")
+		btnPad := max((innerW-btnW)/2, 0)
+
+		koikoiEnd := btnPad + cellWidth(" こいこい（続行） ")
+		if clickX >= btnPad && clickX < koikoiEnd {
+			u.koikoiCursor = 0
+			return u.onKoiKoiDecision(g)
+		}
+		shoubuStart := koikoiEnd + 2
+		if clickX >= shoubuStart {
+			u.koikoiCursor = 1
+			return u.onKoiKoiDecision(g)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleParentDetClick(g *gocui.Gui, _ *gocui.View) error {
+	return u.onParentDeterminationOK(g)
+}
+
+func (u *UI) handleCPUKoiKoiClick(g *gocui.Gui, _ *gocui.View) error {
+	return u.onCPUKoiKoiOK(g)
+}
+
+func (u *UI) handleRoundEndClick(g *gocui.Gui, _ *gocui.View) error {
+	return u.onNextRound(g)
+}
+
+func (u *UI) handleGameEndClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	// ボタン行は7行目
+	if clickedLine == 7 {
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 42
+		btnW := cellWidth(" 1月から ") + 4 + cellWidth(" 終了する ")
+		btnPad := max((innerW-btnW)/2, 0)
+
+		restartEnd := btnPad + cellWidth(" 1月から ")
+		if clickX >= btnPad && clickX < restartEnd {
+			u.gameEndCursor = 0
+			return u.onGameEndDecision(g)
+		}
+		quitStart := restartEnd + 4
+		if clickX >= quitStart {
+			u.gameEndCursor = 1
+			return u.onGameEndDecision(g)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleQuitConfClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	// ボタン行は5行目
+	if clickedLine == 5 {
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 44
+		btnW := cellWidth(" はい ") + 4 + cellWidth(" いいえ ")
+		btnPad := max((innerW-btnW)/2, 0)
+
+		yesEnd := btnPad + cellWidth(" はい ")
+		if clickX >= btnPad && clickX < yesEnd {
+			u.quitCursor = 0
+			return u.handleEnter(g, nil)
+		}
+		noStart := yesEnd + 4
+		if clickX >= noStart {
+			u.quitCursor = 1
+			return u.handleEnter(g, nil)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleOptionsClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	switch clickedLine {
+	case 1: // ラウンド数行
+		u.optCursor = 0
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		// ◀ または ▶ をクリックで値変更
+		if clickX < 21 {
+			// 左側 → 減らす
+			for i, r := range roundsOptions {
+				if r == u.optRounds && i > 0 {
+					u.optRounds = roundsOptions[i-1]
+					break
+				}
+			}
+		} else {
+			// 右側 → 増やす
+			for i, r := range roundsOptions {
+				if r == u.optRounds && i < len(roundsOptions)-1 {
+					u.optRounds = roundsOptions[i+1]
+					break
+				}
+			}
+		}
+	case 3: // 難易度行
+		u.optCursor = 1
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		if clickX < 21 {
+			for i, d := range diffOptions {
+				if d == u.optDifficulty && i > 0 {
+					u.optDifficulty = diffOptions[i-1]
+					break
+				}
+			}
+		} else {
+			for i, d := range diffOptions {
+				if d == u.optDifficulty && i < len(diffOptions)-1 {
+					u.optDifficulty = diffOptions[i+1]
+					break
+				}
+			}
+		}
+	case 5: // ボタン行
+		u.optCursor = 2
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 42
+		cancelW := cellWidth(labelCancel)
+		applyW := cellWidth(labelApply)
+		btnW := cancelW + 4 + applyW
+		btnPad := max((innerW-btnW)/2, 0)
+
+		cancelEnd := btnPad + cancelW
+		if clickX >= btnPad && clickX < cancelEnd {
+			u.optBtnCursor = 0
+			return u.handleEnter(g, nil)
+		}
+		applyStart := cancelEnd + 4
+		if clickX >= applyStart {
+			u.optBtnCursor = 1
+			return u.handleEnter(g, nil)
+		}
+	}
+	return nil
+}
+
+func (u *UI) handleOptConfClick(g *gocui.Gui, v *gocui.View) error {
+	_, cy := v.Cursor()
+	_, oy := v.Origin()
+	clickedLine := cy + oy
+
+	// ボタン行は5行目
+	if clickedLine == 5 {
+		cx, _ := v.Cursor()
+		ox, _ := v.Origin()
+		clickX := cx + ox
+		innerW := 44
+		btnW := cellWidth(" はい ") + 4 + cellWidth(" いいえ ")
+		btnPad := max((innerW-btnW)/2, 0)
+
+		yesEnd := btnPad + cellWidth(" はい ")
+		if clickX >= btnPad && clickX < yesEnd {
+			u.optConfCursor = 0
+			return u.handleEnter(g, nil)
+		}
+		noStart := yesEnd + 4
+		if clickX >= noStart {
+			u.optConfCursor = 1
+			return u.handleEnter(g, nil)
+		}
+	}
+	return nil
 }

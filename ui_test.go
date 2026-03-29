@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/awesome-gocui/gocui"
@@ -205,7 +206,7 @@ func TestAddLog(t *testing.T) {
 
 func TestAddLogTruncation(t *testing.T) {
 	u := NewUI()
-	for i := 0; i < 1100; i++ {
+	for range 1100 {
 		u.addLog("msg")
 	}
 	if len(u.logLines) != 1000 {
@@ -214,11 +215,14 @@ func TestAddLogTruncation(t *testing.T) {
 }
 
 func TestPhaseConstants(t *testing.T) {
-	if PhasePlayerSelectHand != 0 {
-		t.Errorf("PhasePlayerSelectHand = %d, want 0", PhasePlayerSelectHand)
+	if PhaseParentDetermination != 0 {
+		t.Errorf("PhaseParentDetermination = %d, want 0", PhaseParentDetermination)
 	}
-	if PhaseGameEnd != 8 {
-		t.Errorf("PhaseGameEnd = %d, want 8", PhaseGameEnd)
+	if PhasePlayerSelectHand != 1 {
+		t.Errorf("PhasePlayerSelectHand = %d, want 1", PhasePlayerSelectHand)
+	}
+	if PhaseGameEnd != 9 {
+		t.Errorf("PhaseGameEnd = %d, want 9", PhaseGameEnd)
 	}
 }
 
@@ -337,8 +341,9 @@ func TestInitNewGame(t *testing.T) {
 	if u.game.Round != 1 {
 		t.Errorf("Round = %d, want 1", u.game.Round)
 	}
-	if u.phase != PhasePlayerSelectHand && u.phase != PhaseCPUTurn {
-		t.Errorf("phase = %d, want PhasePlayerSelectHand or PhaseCPUTurn", u.phase)
+	// 初回は親決めフェーズから開始
+	if u.phase != PhaseParentDetermination {
+		t.Errorf("phase = %d, want PhaseParentDetermination", u.phase)
 	}
 	if u.configDir != dir {
 		t.Errorf("configDir = %q, want %q", u.configDir, dir)
@@ -473,8 +478,43 @@ func TestUINewGame(t *testing.T) {
 	if u.game.Round != 1 {
 		t.Errorf("Round = %d, want 1", u.game.Round)
 	}
-	if u.phase != PhasePlayerSelectHand && u.phase != PhaseCPUTurn {
-		t.Errorf("phase = %d, unexpected", u.phase)
+	// 新規ゲームは親決めフェーズから開始
+	if u.phase != PhaseParentDetermination {
+		t.Errorf("phase = %d, want PhaseParentDetermination", u.phase)
+	}
+}
+
+func TestLogParentDeterminationNilCards(t *testing.T) {
+	u := newTestUI(t)
+	u.game.PlayerDrawnCard = nil
+	u.game.CPUDrawnCard = nil
+	initialLogLen := len(u.logLines)
+	u.logParentDetermination()
+	// nilの場合は何もログしない
+	if len(u.logLines) != initialLogLen {
+		t.Error("logParentDetermination should not add logs when cards are nil")
+	}
+}
+
+func TestLogParentDeterminationPlayerParent(t *testing.T) {
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.game.NextParentIsPlayer = true
+	initialLogLen := len(u.logLines)
+	u.logParentDetermination()
+	if len(u.logLines) <= initialLogLen {
+		t.Error("logParentDetermination should add logs")
+	}
+}
+
+func TestLogParentDeterminationCPUParent(t *testing.T) {
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.game.NextParentIsPlayer = false
+	initialLogLen := len(u.logLines)
+	u.logParentDetermination()
+	if len(u.logLines) <= initialLogLen {
+		t.Error("logParentDetermination should add logs")
 	}
 }
 
@@ -1405,15 +1445,15 @@ func TestApplyOptions(t *testing.T) {
 	}
 }
 
-func TestApplyOptionsPlayerFirst(t *testing.T) {
+func TestApplyOptionsResetsPhase(t *testing.T) {
 	u := newTestUI(t)
 	u.optRounds = 3
 	u.optDifficulty = DifficultyEasy
 
 	u.applyOptions()
-	// NewGame always sets NextParentIsPlayer = true
-	if u.phase != PhasePlayerSelectHand {
-		t.Errorf("phase = %d, want PhasePlayerSelectHand", u.phase)
+	// 設定適用後は親決めフェーズから開始
+	if u.phase != PhaseParentDetermination {
+		t.Errorf("phase = %d, want PhaseParentDetermination", u.phase)
 	}
 }
 
@@ -2053,7 +2093,7 @@ func TestDrawLog(t *testing.T) {
 	u.drawLog(g)
 
 	// 50行以上
-	for i := 0; i < 60; i++ {
+	for range 60 {
 		u.addLog("line")
 	}
 	u.drawLog(g)
@@ -2528,6 +2568,142 @@ func TestHandleRightGameEnd(t *testing.T) {
 	}
 }
 
+func TestOnParentDeterminationOK(t *testing.T) {
+	u := newTestUI(t)
+	u.game = NewGame(12) // 親決め済み
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// Step 0 → Step 1 → Step 2 (nil GUI なのでスキップ)
+	err := u.onParentDeterminationOK(nil)
+	if err != nil {
+		t.Fatalf("onParentDeterminationOK (step 0) error: %v", err)
+	}
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2 after nil GUI skip", u.parentDetStep)
+	}
+
+	// Step 2 → ゲーム開始
+	err = u.onParentDeterminationOK(nil)
+	if err != nil {
+		t.Fatalf("onParentDeterminationOK (step 2) error: %v", err)
+	}
+	// StartRound が呼ばれて手札が配られる
+	if len(u.game.PlayerHand) != 8 {
+		t.Errorf("PlayerHand = %d cards, want 8", len(u.game.PlayerHand))
+	}
+	// 親に応じたフェーズになる
+	if u.game.IsPlayerTurn && u.phase != PhasePlayerSelectHand {
+		t.Errorf("phase = %d, want PhasePlayerSelectHand when player is parent", u.phase)
+	}
+	if !u.game.IsPlayerTurn && u.phase != PhaseCPUTurn {
+		t.Errorf("phase = %d, want PhaseCPUTurn when CPU is parent", u.phase)
+	}
+}
+
+func TestOnParentDeterminationOKStep1(t *testing.T) {
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1 // CPUの札表示中
+
+	err := u.onParentDeterminationOK(nil)
+	if err != nil {
+		t.Fatalf("onParentDeterminationOK error: %v", err)
+	}
+	// Step 1 では何もしない
+	if u.parentDetStep != 1 {
+		t.Errorf("parentDetStep = %d, want 1 (unchanged)", u.parentDetStep)
+	}
+}
+
+func TestDrawParentDeterminationAllSteps(t *testing.T) {
+	g := newTestGUI(t)
+	u := newTestUI(t)
+	u.game = NewGame(12)
+
+	// Step 0: プレイヤー回転中
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+	u.parentDetDisplay = &AllCards[0]
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+	u.drawParentDetermination(g)
+
+	// Step 1: CPU表示中
+	u.parentDetStep = 1
+	u.parentDetDisplay = &AllCards[10]
+	u.drawParentDetermination(g)
+
+	// Step 2: 結果表示 (プレイヤーが親)
+	u.parentDetStep = 2
+	u.game.NextParentIsPlayer = true
+	u.drawParentDetermination(g)
+
+	// Step 2: 結果表示 (CPUが親)
+	u.game.NextParentIsPlayer = false
+	u.drawParentDetermination(g)
+}
+
+func TestDrawParentDeterminationNilDisplay(t *testing.T) {
+	g := newTestGUI(t)
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+	u.parentDetDisplay = nil // nilの場合は "？？？" と表示
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+	u.drawParentDetermination(g)
+}
+
+func TestHandleParentDetClick(t *testing.T) {
+	g := newTestGUI(t)
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	err := u.handleParentDetClick(nil, nil)
+	if err != nil {
+		t.Fatalf("handleParentDetClick error: %v", err)
+	}
+	// Step 0 → Step 2 (nil GUI でスキップ)
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+}
+
+func TestDrawStatusParentDetermination(t *testing.T) {
+	g := newTestGUI(t)
+	u := newTestUI(t)
+	u.game = NewGame(12)
+
+	if err := u.layout(g); err != nil {
+		t.Fatalf("layout error: %v", err)
+	}
+
+	// Step 0
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+	u.drawStatus(g)
+
+	// Step 1
+	u.parentDetStep = 1
+	u.drawStatus(g)
+
+	// Step 2
+	u.parentDetStep = 2
+	u.drawStatus(g)
+}
+
 func TestOnGameEndDecisionQuit(t *testing.T) {
 	u := newTestUI(t)
 	u.phase = PhaseGameEnd
@@ -2557,8 +2733,9 @@ func TestOnGameEndDecisionRestart(t *testing.T) {
 	if u.game.Round != 1 {
 		t.Errorf("Round = %d, want 1", u.game.Round)
 	}
-	if u.phase != PhasePlayerSelectHand && u.phase != PhaseCPUTurn {
-		t.Errorf("phase = %d, want PhasePlayerSelectHand or PhaseCPUTurn", u.phase)
+	// 再スタート時は親決めフェーズから開始
+	if u.phase != PhaseParentDetermination {
+		t.Errorf("phase = %d, want PhaseParentDetermination", u.phase)
 	}
 }
 
@@ -2656,4 +2833,213 @@ func TestCPUChooseHandCardEasyNoMatchRandom(t *testing.T) {
 			t.Errorf("iteration %d: expected nil field card for no-match", i)
 		}
 	}
+}
+
+// --- 親決めアニメーション関連テスト ---
+
+func TestExecuteCPUCardReveal(t *testing.T) {
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[0]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// nil GUI, delay 0 で同期的にテスト
+	u.executeCPUCardReveal(nil, 0, 0)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+	if u.parentDetDisplay != u.game.CPUDrawnCard {
+		t.Error("parentDetDisplay should be CPUDrawnCard")
+	}
+}
+
+func TestShowCPUCardWithDelayNilGUI(t *testing.T) {
+	u := newTestUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[5]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// nil GUI の場合はアニメーションスキップして即座に結果表示
+	u.showCPUCardWithDelay(nil)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+	if u.parentDetDisplay != u.game.CPUDrawnCard {
+		t.Error("parentDetDisplay should be CPUDrawnCard")
+	}
+}
+
+func TestStartParentDetAnimationNilGUI(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// nil GUI の場合は何もしない
+	u.startParentDetAnimation(nil)
+	// パニックせずに終了すればOK
+}
+
+func TestStartParentDetAnimationAlreadyRunning(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// 既に実行中の場合
+	parentDetAnimRunning.Store(true)
+	defer parentDetAnimRunning.Store(false)
+
+	// 二重実行を防ぐ
+	u.startParentDetAnimation(nil)
+	// パニックせずに終了すればOK
+}
+
+func TestStartParentDetAnimationWithGUI(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	// step=1 でループに入らないようにして即終了
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+	parentDetAnimRunning.Store(false)
+
+	// GUI ありの場合はgoroutineで実行
+	u.startParentDetAnimation(g)
+
+	// goroutineが完了するまで待機
+	time.Sleep(50 * time.Millisecond)
+
+	// アニメーションが終了していることを確認
+	if parentDetAnimRunning.Load() {
+		t.Error("animation should have stopped")
+	}
+}
+
+func TestExecuteCPUCardRevealWithDelay(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[0]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// 短い遅延でテスト（delay > 0 のブランチをカバー）
+	u.executeCPUCardReveal(g, 1*time.Millisecond, 1*time.Millisecond)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+	if u.parentDetDisplay != u.game.CPUDrawnCard {
+		t.Error("parentDetDisplay should be CPUDrawnCard")
+	}
+}
+
+func TestExecuteCPUCardRevealWithGUI(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[3]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// GUI あり、delay 0 でテスト（g != nil のブランチをカバー）
+	u.executeCPUCardReveal(g, 0, 0)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+}
+
+func TestExecuteCPUCardRevealWithGUIAndDelay(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[7]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// GUI あり、delay ありでテスト（全ブランチをカバー）
+	u.executeCPUCardReveal(g, 1*time.Millisecond, 1*time.Millisecond)
+
+	if u.parentDetStep != 2 {
+		t.Errorf("parentDetStep = %d, want 2", u.parentDetStep)
+	}
+}
+
+func TestExecuteParentDetSpin(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// nil GUI, delay 0 で同期的にテスト（1回だけ実行してbreak）
+	u.executeParentDetSpin(nil, 0)
+
+	if u.parentDetDisplay == nil {
+		t.Error("parentDetDisplay should be set")
+	}
+}
+
+func TestExecuteParentDetSpinWithGUI(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// GUI あり、delay 0 で1回だけ実行
+	u.executeParentDetSpin(g, 0)
+
+	if u.parentDetDisplay == nil {
+		t.Error("parentDetDisplay should be set")
+	}
+}
+
+func TestExecuteParentDetSpinExitsWhenStepChanges(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1 // 既にstep 1なのでループに入らない
+
+	u.executeParentDetSpin(nil, 0)
+
+	// parentDetDisplay は設定されない
+	if u.parentDetDisplay != nil {
+		t.Error("parentDetDisplay should be nil when step != 0")
+	}
+}
+
+func TestStartParentDetAnimationNilGUICallsSpin(t *testing.T) {
+	u := newTestUI(t)
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+
+	// nil GUI の場合は同期的に executeParentDetSpin を呼ぶ
+	u.startParentDetAnimation(nil)
+
+	if u.parentDetDisplay == nil {
+		t.Error("parentDetDisplay should be set")
+	}
+}
+
+func TestExecuteParentDetSpinWithDelayPhaseChange(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	// phase を変更してループを即終了させる
+	u.phase = PhasePlayerSelectHand // PhaseParentDetermination ではない
+	u.parentDetStep = 0
+
+	// 短い遅延でテスト（ループに入らないので即終了）
+	u.executeParentDetSpin(g, 1*time.Millisecond)
+
+	// phase が条件を満たさないのでループに入らず終了
+}
+
+func TestShowCPUCardWithDelayWithGUI(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.CPUDrawnCard = &AllCards[10]
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 1
+
+	// GUI ありの場合はgoroutineで実行
+	u.showCPUCardWithDelay(g)
+
+	// goroutineが完了するまで待機
+	time.Sleep(100 * time.Millisecond)
+
+	// goroutineが起動したことを確認（カバレッジ用）
 }

@@ -146,6 +146,29 @@ func TestExecuteCPUTurnNoCapture(t *testing.T) {
 	}
 }
 
+func TestExecuteCPUTurnDrawCapture(t *testing.T) {
+	u, g := setupCPUTurnUI(t)
+	u.game = NewGame(12)
+	// CPUの手札は藤（場札とマッチしない）
+	u.game.CPUHand = []Card{AllCards[12]}
+	u.game.PlayerHand = []Card{AllCards[4]}
+	// 場札は松
+	u.game.Field = []Card{AllCards[0], AllCards[1]}
+	// 山札に松のカス（場札の松とマッチ）
+	u.game.Deck = []Card{AllCards[2], AllCards[16]}
+	u.game.IsPlayerTurn = false
+	u.difficulty = DifficultyNormal
+
+	initialCPUCaptured := len(u.game.CPUCaptured)
+	if err := u.executeCPUTurn(g); err != nil {
+		t.Fatalf("executeCPUTurn error: %v", err)
+	}
+	// 山札から引いた松のカスで場札の松を獲得しているはず
+	if len(u.game.CPUCaptured) <= initialCPUCaptured {
+		t.Error("CPU should have captured cards from drawn card")
+	}
+}
+
 func TestExecuteCPUTurnEmptyHand(t *testing.T) {
 	u, g := setupCPUTurnUI(t)
 	u.game = NewGame(12)
