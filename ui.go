@@ -37,6 +37,9 @@ const (
 	msgPlayerWin = "あなたの勝ちです！おめでとうございます！"
 	msgCPUWin    = "CPUの勝ちです。次は頑張りましょう！"
 	msgDraw      = "引き分けです！"
+
+	labelCancel = " キャンセル "
+	labelApply  = " 適用 "
 )
 
 type UI struct {
@@ -859,16 +862,16 @@ func (u *UI) drawOptions(g *gocui.Gui) {
 	fmt.Fprintln(v)
 
 	// キャンセル / 適用ボタン
-	cancelLabel := " キャンセル "
-	applyLabel := " 適用 "
+	cancelStr := labelCancel
+	applyStr := labelApply
 	if u.optCursor == 2 && u.optBtnCursor == 0 {
-		cancelLabel = ansiReverse + cancelLabel + ansiReset
+		cancelStr = ansiReverse + cancelStr + ansiReset
 	}
 	if u.optCursor == 2 && u.optBtnCursor == 1 {
-		applyLabel = ansiReverse + applyLabel + ansiReset
+		applyStr = ansiReverse + applyStr + ansiReset
 	}
-	btnLine := cancelLabel + "    " + applyLabel
-	btnW := cellWidth(" キャンセル ") + 4 + cellWidth(" 適用 ")
+	btnLine := cancelStr + "    " + applyStr
+	btnW := cellWidth(labelCancel) + 4 + cellWidth(labelApply)
 	btnPad := max((innerW-btnW)/2, 0)
 	fmt.Fprintln(v, strings.Repeat(" ", btnPad)+btnLine)
 	fmt.Fprintln(v)
@@ -2210,8 +2213,8 @@ func (u *UI) handleOptionsClick(g *gocui.Gui, v *gocui.View) error {
 		ox, _ := v.Origin()
 		clickX := cx + ox
 		innerW := 42
-		cancelW := cellWidth(" キャンセル ")
-		applyW := cellWidth(" 適用 ")
+		cancelW := cellWidth(labelCancel)
+		applyW := cellWidth(labelApply)
 		btnW := cancelW + 4 + applyW
 		btnPad := max((innerW-btnW)/2, 0)
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -470,8 +471,8 @@ func TestHandleEnterApplyOptions(t *testing.T) {
 	u, g := setupMouseTestUI(t)
 	u.game = NewGame(12)
 	u.showOptions = true
-	u.optCursor = 2     // ボタン行
-	u.optBtnCursor = 1  // 適用ボタン
+	u.optCursor = 2    // ボタン行
+	u.optBtnCursor = 1 // 適用ボタン
 
 	if err := u.handleEnter(g, nil); err != nil {
 		t.Fatalf("handleEnter error: %v", err)
@@ -528,7 +529,7 @@ func TestMouseHandleEnterQuitConfYes(t *testing.T) {
 	u.quitCursor = 0 // はい
 
 	err := u.handleEnter(g, nil)
-	if err != gocui.ErrQuit {
+	if !errors.Is(err, gocui.ErrQuit) {
 		t.Errorf("expected ErrQuit, got %v", err)
 	}
 }
@@ -693,7 +694,7 @@ func TestHandleFieldClickPhaseSelectField(t *testing.T) {
 	u.game.PlayerHand = []Card{AllCards[4]}
 	u.game.Field = []Card{AllCards[0], AllCards[1]} // 松2枚
 	u.game.Deck = []Card{AllCards[12], AllCards[16]}
-	u.playedCard = AllCards[2]              // 松のカス
+	u.playedCard = AllCards[2] // 松のカス
 	u.matchingCards = []Card{AllCards[0], AllCards[1]}
 	u.phase = PhasePlayerSelectField
 
@@ -967,7 +968,7 @@ func TestHandleGameEndClickQuitButton(t *testing.T) {
 	}
 
 	err := u.handleGameEndClick(g, v)
-	if err != gocui.ErrQuit {
+	if !errors.Is(err, gocui.ErrQuit) {
 		t.Errorf("expected ErrQuit, got %v", err)
 	}
 }
@@ -1035,7 +1036,7 @@ func TestHandleQuitConfClickYesButton(t *testing.T) {
 	}
 
 	err := u.handleQuitConfClick(g, v)
-	if err != gocui.ErrQuit {
+	if !errors.Is(err, gocui.ErrQuit) {
 		t.Errorf("expected ErrQuit, got %v", err)
 	}
 }
