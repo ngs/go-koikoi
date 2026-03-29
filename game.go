@@ -31,16 +31,54 @@ type Game struct {
 	CPUKoiKoi    bool
 	// 次ラウンドの親（true=プレイヤー）
 	NextParentIsPlayer bool
+	// 親決めで引いた札（表示用）
+	PlayerDrawnCard *Card
+	CPUDrawnCard    *Card
 }
 
 // NewGame 新しいゲームを開始
 func NewGame(rounds int) *Game {
 	g := &Game{
-		MaxRounds:          rounds,
-		Round:              1,
-		NextParentIsPlayer: true, // 初回はプレイヤーが親
+		MaxRounds: rounds,
+		Round:     1,
 	}
+	g.determineParent()
 	return g
+}
+
+// determineParent 親決め: 山札から1枚ずつ引き、月が若い方が親
+func (g *Game) determineParent() {
+	// シャッフルした山札を作成
+	deck := make([]Card, len(AllCards))
+	copy(deck, AllCards)
+	for i := len(deck) - 1; i > 0; i-- {
+		j := cryptoIntn(i + 1)
+		deck[i], deck[j] = deck[j], deck[i]
+	}
+
+	idx := 0
+	for {
+		playerCard := deck[idx]
+		cpuCard := deck[idx+1]
+		idx += 2
+
+		if playerCard.Month < cpuCard.Month {
+			g.NextParentIsPlayer = true
+			g.PlayerDrawnCard = &playerCard
+			g.CPUDrawnCard = &cpuCard
+			return
+		} else if cpuCard.Month < playerCard.Month {
+			g.NextParentIsPlayer = false
+			g.PlayerDrawnCard = &playerCard
+			g.CPUDrawnCard = &cpuCard
+			return
+		}
+		// 同じ月の場合は引き直し
+		if idx+2 > len(deck) {
+			// 山札が足りない場合（理論上ありえないが安全のため）
+			idx = 0
+		}
+	}
 }
 
 // StartRound ラウンド開始：シャッフルして配る

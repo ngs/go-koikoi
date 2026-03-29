@@ -10,8 +10,40 @@ func TestNewGame(t *testing.T) {
 	if g.Round != 1 {
 		t.Errorf("Round = %d, want 1", g.Round)
 	}
-	if !g.NextParentIsPlayer {
-		t.Error("NextParentIsPlayer should be true")
+	// 親決めで引いた札が記録されているか
+	if g.PlayerDrawnCard == nil {
+		t.Error("PlayerDrawnCard should not be nil after NewGame")
+	}
+	if g.CPUDrawnCard == nil {
+		t.Error("CPUDrawnCard should not be nil after NewGame")
+	}
+	// 親決めの結果が正しいか（月が若い方が親）
+	if g.PlayerDrawnCard.Month < g.CPUDrawnCard.Month && !g.NextParentIsPlayer {
+		t.Error("Player drew earlier month but is not parent")
+	}
+	if g.CPUDrawnCard.Month < g.PlayerDrawnCard.Month && g.NextParentIsPlayer {
+		t.Error("CPU drew earlier month but player is parent")
+	}
+}
+
+func TestDetermineParentBothPaths(t *testing.T) {
+	// 複数回実行して両方のパスをカバー
+	playerWins := 0
+	cpuWins := 0
+	for i := 0; i < 100; i++ {
+		g := NewGame(12)
+		if g.NextParentIsPlayer {
+			playerWins++
+		} else {
+			cpuWins++
+		}
+	}
+	// 統計的にどちらも0でないはず
+	if playerWins == 0 {
+		t.Error("Player never won parent determination in 100 tries")
+	}
+	if cpuWins == 0 {
+		t.Error("CPU never won parent determination in 100 tries")
 	}
 }
 

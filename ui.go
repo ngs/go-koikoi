@@ -21,7 +21,8 @@ const (
 type Phase int
 
 const (
-	PhasePlayerSelectHand Phase = iota
+	PhaseParentDetermination Phase = iota
+	PhasePlayerSelectHand
 	PhasePlayerSelectField
 	PhasePlayerDrawResult
 	PhasePlayerSelectFieldDraw
@@ -65,6 +66,10 @@ type UI struct {
 	optDifficulty Difficulty // オプション: 難易度
 	showOptConf   bool       // オプション適用確認ポップアップ
 	optConfCursor int        // 適用確認カーソル (0=はい, 1=いいえ)
+
+	// 親決めアニメーション
+	parentDetStep    int   // 0=プレイヤー札回転中, 1=CPU札表示中, 2=結果表示
+	parentDetDisplay *Card // 回転中に表示する札
 
 	// 設定・保存パス
 	configDir    string
@@ -111,9 +116,24 @@ func (u *UI) restoreSave(sd *SaveData) {
 
 func (u *UI) newGame(rounds int) {
 	u.game = NewGame(rounds)
-	u.game.StartRound()
-	u.addLog(fmt.Sprintf("--- %s 開始 ---", u.roundName()))
-	u.setInitialPhase()
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+	u.parentDetDisplay = nil
+}
+
+func (u *UI) logParentDetermination() {
+	if u.game.PlayerDrawnCard == nil || u.game.CPUDrawnCard == nil {
+		return
+	}
+	playerCard := u.game.PlayerDrawnCard
+	cpuCard := u.game.CPUDrawnCard
+	u.addLog("--- 親決め ---")
+	u.addLog(fmt.Sprintf("  あなた: %s  CPU: %s", playerCard.Name, cpuCard.Name))
+	if u.game.NextParentIsPlayer {
+		u.addLog("  → あなたが親（先攻）")
+	} else {
+		u.addLog("  → CPUが親（先攻）")
+	}
 }
 
 func (u *UI) setInitialPhase() {
@@ -437,6 +457,30 @@ func (u *UI) layout(g *gocui.Gui) error {
 	} else {
 		_ = g.DeleteView("koikoi")
 		_ = g.DeleteView("koikoi_t")
+	}
+
+	// --- 親決めポップアップ ---
+	if u.phase == PhaseParentDetermination {
+		pw := 44
+		ph := 11
+		px0 := (maxX - pw) / 2
+		py0 := (maxY - ph) / 2
+		if v, err := g.SetView("parentdet", px0, py0, px0+pw, py0+ph, 0); err != nil {
+			if !errors.Is(err, gocui.ErrUnknownView) {
+				return err
+			}
+			v.Frame = true
+			v.FrameRunes = []rune{'━', '┃', '┏', '┓', '┗', '┛', '┏', '┓', '┏', '┗', '┏'}
+		}
+		setOverlayTitle(g, "parentdet", px0, py0, px0+pw, " 親決め ")
+		u.drawParentDetermination(g)
+		// アニメーション開始
+		if u.parentDetStep == 0 {
+			u.startParentDetAnimation(g)
+		}
+	} else {
+		_ = g.DeleteView("parentdet")
+		_ = g.DeleteView("parentdet_t")
 	}
 
 	// --- CPUこいこいポップアップ ---
@@ -945,6 +989,71 @@ func (u *UI) drawKoiKoi(g *gocui.Gui) {
 	fmt.Fprintln(v, centerPad("←/→:選択  Enter:決定", innerW))
 }
 
+func (u *UI) drawParentDetermination(g *gocui.Gui) {
+	v, _ := g.View("parentdet")
+	if v == nil {
+		return
+	}
+	v.Clear()
+
+	innerW := 42
+
+	fmt.Fprintln(v)
+	fmt.Fprintln(v, centerPad("山札から札を引いて親を決めます", innerW))
+	fmt.Fprintln(v)
+
+	switch u.parentDetStep {
+	case 0:
+		// プレイヤーの札が回転中
+		displayCard := "？？？"
+		if u.parentDetDisplay != nil {
+			displayCard = u.parentDetDisplay.Name
+		}
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("あなた: %s", displayCard), innerW))
+		fmt.Fprintln(v, centerPad("CPU:    ---", innerW))
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("", innerW))
+		fmt.Fprintln(v)
+		stopLabel := ansiReverse + " 止める " + ansiReset
+		stopW := cellWidth(" 止める ")
+		stopPad := max((innerW-stopW)/2, 0)
+		fmt.Fprintln(v, strings.Repeat(" ", stopPad)+stopLabel)
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("Enter:止める", innerW))
+	case 1:
+		// CPUの札を表示中（ディレイ後に結果へ）
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("あなた: %s", u.game.PlayerDrawnCard.Name), innerW))
+		displayCard := "？？？"
+		if u.parentDetDisplay != nil {
+			displayCard = u.parentDetDisplay.Name
+		}
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("CPU:    %s", displayCard), innerW))
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("", innerW))
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("", innerW))
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("", innerW))
+	default:
+		// 結果表示
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("あなた: %s", u.game.PlayerDrawnCard.Name), innerW))
+		fmt.Fprintln(v, centerPad(fmt.Sprintf("CPU:    %s", u.game.CPUDrawnCard.Name), innerW))
+		fmt.Fprintln(v)
+		if u.game.NextParentIsPlayer {
+			fmt.Fprintln(v, centerPad("→ あなたが親（先攻）です", innerW))
+		} else {
+			fmt.Fprintln(v, centerPad("→ CPUが親（先攻）です", innerW))
+		}
+		fmt.Fprintln(v)
+		okLabel := ansiReverse + "  OK  " + ansiReset
+		okW := cellWidth("  OK  ")
+		okPad := max((innerW-okW)/2, 0)
+		fmt.Fprintln(v, strings.Repeat(" ", okPad)+okLabel)
+		fmt.Fprintln(v)
+		fmt.Fprintln(v, centerPad("Enter:続ける", innerW))
+	}
+}
+
 func (u *UI) drawCPUKoiKoi(g *gocui.Gui) {
 	v, _ := g.View("cpukoikoi")
 	if v == nil {
@@ -1047,16 +1156,15 @@ func (u *UI) applyOptions() error {
 	DeleteSave(u.savePath)
 
 	// ゲームリセット
-	// NewGame は NextParentIsPlayer = true で初期化するため、常にプレイヤー先攻
 	u.game = NewGame(u.settings.Rounds)
-	u.game.StartRound()
 	u.logLines = nil
 	u.addLog(fmt.Sprintf("--- 設定変更: %dラウンド / %s ---", u.settings.Rounds, u.difficulty.Label()))
-	u.addLog(fmt.Sprintf("--- %s 開始 ---", u.roundName()))
 	u.cursor = 0
 	u.showOptions = false
 	u.showOptConf = false
-	u.phase = PhasePlayerSelectHand
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+	u.parentDetDisplay = nil
 	return nil
 }
 
@@ -1067,6 +1175,15 @@ func (u *UI) drawStatus(g *gocui.Gui) {
 	}
 	v.Clear()
 	switch u.phase {
+	case PhaseParentDetermination:
+		switch u.parentDetStep {
+		case 0:
+			fmt.Fprint(v, " Enter/Click: 止める")
+		case 1:
+			fmt.Fprint(v, " CPUの札を引いています...")
+		default:
+			fmt.Fprint(v, " Enter/Click: 続ける")
+		}
 	case PhasePlayerSelectHand:
 		fmt.Fprint(v, " Up/Down/Click: 選択 | Enter: 決定 | o: オプション | ?: ヘルプ | q: 終了")
 	case PhasePlayerSelectField, PhasePlayerSelectFieldDraw:
@@ -1181,6 +1298,7 @@ func (u *UI) setKeybindings(g *gocui.Gui) error {
 		{"field", u.handleFieldClick},
 		{"koikoi", u.handleKoiKoiClick},
 		{"cpukoikoi", u.handleCPUKoiKoiClick},
+		{"parentdet", u.handleParentDetClick},
 		{"roundend", u.handleRoundEndClick},
 		{"gameend", u.handleGameEndClick},
 		{"quitconf", u.handleQuitConfClick},
@@ -1494,6 +1612,8 @@ func (u *UI) handleEnter(g *gocui.Gui, _ *gocui.View) error {
 		return nil
 	}
 	switch u.phase {
+	case PhaseParentDetermination:
+		return u.onParentDeterminationOK(g)
 	case PhasePlayerSelectHand:
 		return u.onSelectHand(g)
 	case PhasePlayerSelectField:
@@ -1515,6 +1635,32 @@ func (u *UI) handleEnter(g *gocui.Gui, _ *gocui.View) error {
 }
 
 // ---- フェーズ遷移 ----
+
+func (u *UI) onParentDeterminationOK(g *gocui.Gui) error {
+	switch u.parentDetStep {
+	case 0:
+		// プレイヤーの札確定 → CPUの札表示へ
+		u.parentDetDisplay = u.game.PlayerDrawnCard
+		u.parentDetStep = 1
+		u.showCPUCardWithDelay(g)
+		return nil
+	case 1:
+		// CPUの札表示中は何もしない
+		return nil
+	default:
+		// 結果表示後 → ゲーム開始
+		u.logParentDetermination()
+		u.game.StartRound()
+		u.addLog(fmt.Sprintf("--- %s 開始 ---", u.roundName()))
+		u.cursor = 0
+		if u.game.IsPlayerTurn {
+			u.phase = PhasePlayerSelectHand
+		} else {
+			u.phase = PhaseCPUTurn
+		}
+		return nil
+	}
+}
 
 func (u *UI) onSelectHand(g *gocui.Gui) error {
 	if len(u.game.PlayerHand) == 0 {
@@ -1686,13 +1832,69 @@ func (u *UI) onGameEndDecision(_ *gocui.Gui) error {
 		return gocui.ErrQuit
 	}
 	// 1月から再スタート
-	// NewGame は NextParentIsPlayer = true で初期化するため、常にプレイヤー先攻
 	u.game = NewGame(u.game.MaxRounds)
-	u.game.StartRound()
-	u.cursor = 0
 	u.addLog("--- 1月から再スタート ---")
-	u.phase = PhasePlayerSelectHand
+	u.cursor = 0
+	u.phase = PhaseParentDetermination
+	u.parentDetStep = 0
+	u.parentDetDisplay = nil
 	return nil
+}
+
+// ---- 親決めアニメーション ----
+
+var parentDetAnimRunning atomic.Bool
+
+func (u *UI) startParentDetAnimation(g *gocui.Gui) {
+	if g == nil {
+		return
+	}
+	if !parentDetAnimRunning.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer parentDetAnimRunning.Store(false)
+		cardIndex := 0
+		for u.parentDetStep == 0 && u.phase == PhaseParentDetermination {
+			card := AllCards[cardIndex%len(AllCards)]
+			u.parentDetDisplay = &card
+			if u.gui != nil {
+				u.gui.Update(func(_ *gocui.Gui) error { return nil })
+			}
+			time.Sleep(80 * time.Millisecond)
+			cardIndex++
+		}
+	}()
+}
+
+func (u *UI) showCPUCardWithDelay(g *gocui.Gui) {
+	if g == nil {
+		// テスト時はアニメーションをスキップして即座に結果表示
+		u.parentDetStep = 2
+		return
+	}
+	go func() {
+		// CPUの札をルーレット風に数回表示
+		for i := 0; i < 10; i++ {
+			card := AllCards[cryptoIntn(len(AllCards))]
+			u.parentDetDisplay = &card
+			if u.gui != nil {
+				u.gui.Update(func(_ *gocui.Gui) error { return nil })
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		// 最終的なCPUの札を表示
+		u.parentDetDisplay = u.game.CPUDrawnCard
+		if u.gui != nil {
+			u.gui.Update(func(_ *gocui.Gui) error { return nil })
+		}
+		time.Sleep(500 * time.Millisecond)
+		// 結果表示へ
+		u.parentDetStep = 2
+		if u.gui != nil {
+			u.gui.Update(func(_ *gocui.Gui) error { return nil })
+		}
+	}()
 }
 
 // ---- CPUターン ----
@@ -1883,6 +2085,10 @@ func (u *UI) handleKoiKoiClick(g *gocui.Gui, v *gocui.View) error {
 		}
 	}
 	return nil
+}
+
+func (u *UI) handleParentDetClick(g *gocui.Gui, _ *gocui.View) error {
+	return u.onParentDeterminationOK(g)
 }
 
 func (u *UI) handleCPUKoiKoiClick(g *gocui.Gui, _ *gocui.View) error {
