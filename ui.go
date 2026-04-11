@@ -739,6 +739,9 @@ func (u *UI) drawDeck(g *gocui.Gui) {
 	v.Clear()
 	fmt.Fprintln(v)
 	fmt.Fprintf(v, " 残り%d枚\n", len(u.game.Deck))
+	if u.phase == PhasePlayerSelectFieldDraw {
+		fmt.Fprintf(v, " 引いた札: %s\n", u.drawnCard.Display())
+	}
 	fmt.Fprintln(v)
 }
 

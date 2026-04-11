@@ -2074,6 +2074,47 @@ func TestDrawDeck(t *testing.T) {
 	u.drawDeck(g)
 }
 
+func TestDrawDeckShowsDrawnCardDuringSelection(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.Deck = []Card{AllCards[0], AllCards[4], AllCards[8]}
+	u.drawnCard = AllCards[32] // 菊に盃
+	u.phase = PhasePlayerSelectFieldDraw
+	u.layout(g)
+	u.drawDeck(g)
+
+	v, err := g.View("deck")
+	if err != nil {
+		t.Fatalf("View(deck) error: %v", err)
+	}
+	content := v.Buffer()
+	if !strings.Contains(content, "引いた札") {
+		t.Errorf("deck view should contain '引いた札', got: %s", content)
+	}
+	if !strings.Contains(content, u.drawnCard.Display()) {
+		t.Errorf("deck view should contain drawn card display '%s', got: %s", u.drawnCard.Display(), content)
+	}
+}
+
+func TestDrawDeckDoesNotShowDrawnCardInOtherPhases(t *testing.T) {
+	u, g := newTestUIWithGUI(t)
+	u.game = NewGame(12)
+	u.game.Deck = []Card{AllCards[0], AllCards[4], AllCards[8]}
+	u.drawnCard = AllCards[32]
+	u.phase = PhasePlayerSelectHand // 通常フェーズ
+	u.layout(g)
+	u.drawDeck(g)
+
+	v, err := g.View("deck")
+	if err != nil {
+		t.Fatalf("View(deck) error: %v", err)
+	}
+	content := v.Buffer()
+	if strings.Contains(content, "引いた札") {
+		t.Errorf("deck view should NOT contain '引いた札' in other phases, got: %s", content)
+	}
+}
+
 func TestDrawMyCaptured(t *testing.T) {
 	u, g := newTestUIWithGUI(t)
 	u.layout(g)
