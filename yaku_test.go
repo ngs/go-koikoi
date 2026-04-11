@@ -810,6 +810,34 @@ func TestCheckReachAllowsWhenOpponentDoesNotHaveMissing(t *testing.T) {
 	}
 }
 
+func TestCheckReachNoReachWhenPlayerHasNeitherCard(t *testing.T) {
+	// プレイヤー: 桜に幕(8)も菊に盃(32)も持っていない（他の札のみ）
+	// CPU: 桜に幕(8)を獲得済み
+	// → 花見で一杯のリーチは出るべきではない（必要札を1枚も持っていないため）
+	playerCaptured := cardsFromIDList(4, 12, 16) // 適当な他の札
+	opponentCaptured := cardsFromIDList(8)       // 桜に幕
+
+	reaches := CheckReach(playerCaptured, opponentCaptured)
+
+	if r := hasReach(reaches, "花見で一杯"); r != nil {
+		t.Errorf("必要札を1枚も持っていないのに花見で一杯リーチが出た: Missing=%v", r.Missing)
+	}
+}
+
+func TestCheckReachNoReachWhenPlayerHasNeitherCardTsukimi(t *testing.T) {
+	// プレイヤー: 芒に月(28)も菊に盃(32)も持っていない（他の札のみ）
+	// CPU: 芒に月(28)を獲得済み
+	// → 月見で一杯のリーチは出るべきではない（必要札を1枚も持っていないため）
+	playerCaptured := cardsFromIDList(4, 12, 16) // 適当な他の札
+	opponentCaptured := cardsFromIDList(28)      // 芒に月
+
+	reaches := CheckReach(playerCaptured, opponentCaptured)
+
+	if r := hasReach(reaches, "月見で一杯"); r != nil {
+		t.Errorf("必要札を1枚も持っていないのに月見で一杯リーチが出た: Missing=%v", r.Missing)
+	}
+}
+
 // 複合役テスト
 func TestCheckYakuMultiple(t *testing.T) {
 	// 三光(0,8,28) + 花見で一杯(8,32) + 月見で一杯(28,32)

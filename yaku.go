@@ -188,18 +188,26 @@ func CheckReach(captured, opponentCaptured []Card) []YakuReach {
 	}
 
 	// --- 花見で一杯 ---
+	// リーチ条件: 2枚中1枚を自分が持っていて、もう1枚が相手に取られていない
 	hanami := []int{8, 32}
 	if !hasYaku("花見で一杯") {
-		if m := missingCards(hanami, allIDs); len(m) == 1 {
-			reaches = append(reaches, YakuReach{"花見で一杯", m})
+		haveCount := countContained(hanami, allIDs)
+		if haveCount == 1 {
+			if m := missingCards(hanami, allIDs); len(m) == 1 {
+				reaches = append(reaches, YakuReach{"花見で一杯", m})
+			}
 		}
 	}
 
 	// --- 月見で一杯 ---
+	// リーチ条件: 2枚中1枚を自分が持っていて、もう1枚が相手に取られていない
 	tsukimi := []int{28, 32}
 	if !hasYaku("月見で一杯") {
-		if m := missingCards(tsukimi, allIDs); len(m) == 1 {
-			reaches = append(reaches, YakuReach{"月見で一杯", m})
+		haveCount := countContained(tsukimi, allIDs)
+		if haveCount == 1 {
+			if m := missingCards(tsukimi, allIDs); len(m) == 1 {
+				reaches = append(reaches, YakuReach{"月見で一杯", m})
+			}
 		}
 	}
 
@@ -292,6 +300,16 @@ func contains(ids []int, target int) bool {
 		}
 	}
 	return false
+}
+
+func countContained(required, have []int) int {
+	count := 0
+	for _, r := range required {
+		if contains(have, r) {
+			count++
+		}
+	}
+	return count
 }
 
 func extraPoints(count, base int) int {
