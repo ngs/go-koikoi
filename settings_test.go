@@ -12,9 +12,9 @@ func TestDifficultyLabel(t *testing.T) {
 		want string
 	}{
 		{DifficultyEasy, "かんたん"},
-		{DifficultyNormal, "ふつう"},
+		{DifficultyNormal, difficultyLabelNormal},
 		{DifficultyHard, "つよい"},
-		{Difficulty("unknown"), "ふつう"},
+		{Difficulty("unknown"), difficultyLabelNormal},
 	}
 	for _, tt := range tests {
 		if got := tt.diff.Label(); got != tt.want {

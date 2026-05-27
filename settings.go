@@ -15,9 +15,11 @@ const (
 	DifficultyHard   Difficulty = "hard"
 )
 
+const difficultyLabelNormal = "ふつう"
+
 var difficultyLabels = map[Difficulty]string{
 	DifficultyEasy:   "かんたん",
-	DifficultyNormal: "ふつう",
+	DifficultyNormal: difficultyLabelNormal,
 	DifficultyHard:   "つよい",
 }
 
@@ -25,7 +27,7 @@ func (d Difficulty) Label() string {
 	if l, ok := difficultyLabels[d]; ok {
 		return l
 	}
-	return "ふつう"
+	return difficultyLabelNormal
 }
 
 // Settings ゲーム設定

@@ -25,8 +25,8 @@ func TestCellWidth(t *testing.T) {
 		{"abc", 3},
 		{"", 0},
 		{"松", 2},
-		{"松に鶴", 6},
-		{"[松:光]", 7},
+		{testCardName0, 6},
+		{testCardLabel0, 7},
 		{"hello世界", 9},
 	}
 	for _, tt := range tests {
@@ -133,7 +133,7 @@ func TestCardLabel(t *testing.T) {
 		card Card
 		want string
 	}{
-		{AllCards[0], "[松:光]"},
+		{AllCards[0], testCardLabel0},
 		{AllCards[1], "[松:短]"},
 		{AllCards[2], "[松:カ]"},
 		{AllCards[4], "[梅:種]"},
@@ -2024,7 +2024,7 @@ func TestDrawHandAllPhases(t *testing.T) {
 
 	// PhaseKoiKoi
 	u.phase = PhaseKoiKoi
-	u.newYaku = []Yaku{{"三光", 5}}
+	u.newYaku = []Yaku{{yakuSankou, 5}}
 	u.koikoiCursor = 0
 	u.game.PlayerCaptured = cardsFromIDList(0, 8, 28)
 	u.drawHand(g, -1, 14, 50)
@@ -2433,7 +2433,7 @@ func TestDrawOptConfBothCursors(t *testing.T) {
 func TestDrawKoiKoi(t *testing.T) {
 	u, g := newTestUIWithGUI(t)
 	u.phase = PhaseKoiKoi
-	u.newYaku = []Yaku{{"カス", 1}}
+	u.newYaku = []Yaku{{yakuKasu, 1}}
 	u.game.PlayerCaptured = cardsFromIDList(2, 3, 6, 7, 10, 11, 14, 15, 18, 19)
 	u.layout(g)
 
@@ -2447,7 +2447,7 @@ func TestDrawKoiKoi(t *testing.T) {
 func TestDrawKoiKoiDoubleScore(t *testing.T) {
 	u, g := newTestUIWithGUI(t)
 	u.phase = PhaseKoiKoi
-	u.newYaku = []Yaku{{"カス", 1}, {"タネ", 1}}
+	u.newYaku = []Yaku{{yakuKasu, 1}, {yakuTane, 1}}
 	u.game.PlayerKoiKoi = false
 	u.game.CPUKoiKoi = true // CPU がこいこいしたので得点2倍
 	u.game.PlayerCaptured = cardsFromIDList(2, 3, 4, 5, 6, 7, 10, 11, 14, 15, 18, 19, 22, 23)
@@ -2484,7 +2484,7 @@ func TestDrawRoundEndNilView(t *testing.T) {
 func TestLayoutKoiKoiPopup(t *testing.T) {
 	u, g := newTestUIWithGUI(t)
 	u.phase = PhaseKoiKoi
-	u.newYaku = []Yaku{{"カス", 1}}
+	u.newYaku = []Yaku{{yakuKasu, 1}}
 	u.game.PlayerCaptured = cardsFromIDList(2, 3, 6, 7, 10, 11, 14, 15, 18, 19)
 
 	if err := u.layout(g); err != nil {
@@ -2513,7 +2513,7 @@ func TestLayoutRoundEndPopup(t *testing.T) {
 func TestLayoutDeletesKoiKoiPopup(t *testing.T) {
 	u, g := newTestUIWithGUI(t)
 	u.phase = PhaseKoiKoi
-	u.newYaku = []Yaku{{"カス", 1}}
+	u.newYaku = []Yaku{{yakuKasu, 1}}
 	u.game.PlayerCaptured = cardsFromIDList(2, 3, 6, 7, 10, 11, 14, 15, 18, 19)
 	u.layout(g)
 
@@ -2793,7 +2793,7 @@ func TestDrawCPUKoiKoiWithView(t *testing.T) {
 	u, g := newTestUIWithGUI(t)
 	u.game = NewGame(12)
 	u.game.CPUCaptured = cardsFromIDList(0, 8, 28) // 三光成立
-	u.cpuKoiKoiYaku = []Yaku{{"三光", 5}}
+	u.cpuKoiKoiYaku = []Yaku{{yakuSankou, 5}}
 	u.phase = PhaseCPUKoiKoi
 
 	if err := u.layout(g); err != nil {
@@ -2815,7 +2815,7 @@ func TestHandleEnterCPUKoiKoi(t *testing.T) {
 	u, g := newTestUIWithGUI(t)
 	u.game = NewGame(12)
 	u.game.StartRound()
-	u.cpuKoiKoiYaku = []Yaku{{"三光", 5}}
+	u.cpuKoiKoiYaku = []Yaku{{yakuSankou, 5}}
 	u.phase = PhaseCPUKoiKoi
 	u.layout(g)
 
@@ -2834,7 +2834,7 @@ func TestOnCPUKoiKoiOKRoundOver(t *testing.T) {
 	// 手札を空にして IsRoundOver() == true にする
 	u.game.PlayerHand = nil
 	u.game.CPUHand = nil
-	u.cpuKoiKoiYaku = []Yaku{{"三光", 5}}
+	u.cpuKoiKoiYaku = []Yaku{{yakuSankou, 5}}
 	u.phase = PhaseCPUKoiKoi
 
 	if err := u.onCPUKoiKoiOK(nil); err != nil {
@@ -3282,7 +3282,7 @@ func TestKoiKoiViewContent(t *testing.T) {
 	u.game.PlayerHand = []Card{AllCards[0], AllCards[4]}
 	u.game.PlayerCaptured = cardsFromIDList(0, 8, 28) // 三光用
 	u.game.Deck = []Card{AllCards[12]}
-	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.newYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseKoiKoi
 
 	if err := u.layout(g); err != nil {
@@ -3473,7 +3473,7 @@ func TestKoiKoiDecisionWithHandlers(t *testing.T) {
 	u.game.PlayerHand = []Card{AllCards[0], AllCards[4]}
 	u.game.PlayerCaptured = cardsFromIDList(0, 8, 28)
 	u.game.Deck = []Card{AllCards[12]}
-	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.newYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseKoiKoi
 	u.koikoiCursor = 0
 
@@ -3635,7 +3635,7 @@ func TestTestingScreenCPUKoiKoiViewContent(t *testing.T) {
 	u.game.PlayerHand = []Card{AllCards[0]}
 	u.game.CPUHand = []Card{AllCards[4]}
 	u.game.CPUCaptured = cardsFromIDList(0, 8, 28)
-	u.cpuKoiKoiYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.cpuKoiKoiYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseCPUKoiKoi
 
 	if err := u.layout(g); err != nil {

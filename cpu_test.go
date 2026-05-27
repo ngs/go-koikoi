@@ -114,7 +114,7 @@ func TestCPUChooseFieldCardNonTwo(t *testing.T) {
 func TestCPUDecideKoiKoiEasy(t *testing.T) {
 	g := NewGame(12)
 	g.CPUHand = make([]Card, 5)
-	yakus := []Yaku{{"三光", 5}}
+	yakus := []Yaku{{yakuSankou, 5}}
 	if CPUDecideKoiKoi(g, yakus, DifficultyEasy) {
 		t.Error("Easy CPU should never koikoi")
 	}
@@ -125,7 +125,7 @@ func TestCPUDecideKoiKoiNormal(t *testing.T) {
 
 	// 手札3枚、5文 → こいこいする
 	g.CPUHand = make([]Card, 3)
-	yakus := []Yaku{{"三光", 5}}
+	yakus := []Yaku{{yakuSankou, 5}}
 	if !CPUDecideKoiKoi(g, yakus, DifficultyNormal) {
 		t.Error("Normal CPU should koikoi with 3 cards and 5 points")
 	}
@@ -149,7 +149,7 @@ func TestCPUDecideKoiKoiHard(t *testing.T) {
 
 	// 手札3枚、5文 → こいこいする
 	g.CPUHand = make([]Card, 3)
-	yakus := []Yaku{{"三光", 5}}
+	yakus := []Yaku{{yakuSankou, 5}}
 	if !CPUDecideKoiKoi(g, yakus, DifficultyHard) {
 		t.Error("Hard CPU should koikoi with 3 cards and 5 points")
 	}
@@ -162,14 +162,14 @@ func TestCPUDecideKoiKoiHard(t *testing.T) {
 
 	// 手札3枚、10文 → こいこいしない
 	g.CPUHand = make([]Card, 3)
-	yakus = []Yaku{{"五光", 10}}
+	yakus = []Yaku{{yakuGokou, 10}}
 	if CPUDecideKoiKoi(g, yakus, DifficultyHard) {
 		t.Error("Hard CPU should not koikoi with 10 points")
 	}
 
 	// 手札2枚、9文 → こいこいする
 	g.CPUHand = make([]Card, 2)
-	yakus = []Yaku{{yakuSikou, 8}, {"カス", 1}}
+	yakus = []Yaku{{yakuSikou, 8}, {yakuKasu, 1}}
 	if !CPUDecideKoiKoi(g, yakus, DifficultyHard) {
 		t.Error("Hard CPU should koikoi with 2 cards and 9 points")
 	}
