@@ -838,6 +838,62 @@ func TestCheckReachNoReachWhenPlayerHasNeitherCardTsukimi(t *testing.T) {
 	}
 }
 
+func TestCheckReachNoReachWhenPlayerHasNoInoshikachoCards(t *testing.T) {
+	// プレイヤー: 猪鹿蝶の札を1枚も持っていない
+	// CPU: 牡丹に蝶(20), 紅葉に鹿(36)を獲得済み
+	// → 猪鹿蝶のリーチは出るべきではない（必要札を1枚も持っていないため）
+	playerCaptured := cardsFromIDList(4, 16) // 適当な他の種札
+	opponentCaptured := cardsFromIDList(20, 36)
+
+	reaches := CheckReach(playerCaptured, opponentCaptured)
+
+	if r := hasReach(reaches, "猪鹿蝶"); r != nil {
+		t.Errorf("必要札を1枚も持っていないのに猪鹿蝶リーチが出た: Missing=%v", r.Missing)
+	}
+}
+
+func TestCheckReachNoReachWhenPlayerHasOnlyOneInoshikachoCard(t *testing.T) {
+	// プレイヤー: 萩に猪(24)のみ
+	// CPU: 牡丹に蝶(20)を獲得済み
+	// → 猪鹿蝶のリーチは出るべきではない（残り紅葉に鹿が必要だがプレイヤーは1枚しか持っていない）
+	playerCaptured := cardsFromIDList(24)
+	opponentCaptured := cardsFromIDList(20)
+
+	reaches := CheckReach(playerCaptured, opponentCaptured)
+
+	if r := hasReach(reaches, "猪鹿蝶"); r != nil {
+		t.Errorf("1枚しか持っていないのに猪鹿蝶リーチが出た: Missing=%v", r.Missing)
+	}
+}
+
+func TestCheckReachNoReachWhenPlayerHasNoAkatanCards(t *testing.T) {
+	// プレイヤー: 赤短の札を1枚も持っていない
+	// CPU: 松に赤短(1), 梅に赤短(5)を獲得済み
+	// → 赤短のリーチは出るべきではない
+	playerCaptured := cardsFromIDList(13, 17)
+	opponentCaptured := cardsFromIDList(1, 5)
+
+	reaches := CheckReach(playerCaptured, opponentCaptured)
+
+	if r := hasReach(reaches, "赤短"); r != nil {
+		t.Errorf("必要札を1枚も持っていないのに赤短リーチが出た: Missing=%v", r.Missing)
+	}
+}
+
+func TestCheckReachNoReachWhenPlayerHasNoAotanCards(t *testing.T) {
+	// プレイヤー: 青短の札を1枚も持っていない
+	// CPU: 牡丹に短冊(21), 菊に短冊(33)を獲得済み
+	// → 青短のリーチは出るべきではない
+	playerCaptured := cardsFromIDList(13, 17)
+	opponentCaptured := cardsFromIDList(21, 33)
+
+	reaches := CheckReach(playerCaptured, opponentCaptured)
+
+	if r := hasReach(reaches, "青短"); r != nil {
+		t.Errorf("必要札を1枚も持っていないのに青短リーチが出た: Missing=%v", r.Missing)
+	}
+}
+
 // 複合役テスト
 func TestCheckYakuMultiple(t *testing.T) {
 	// 三光(0,8,28) + 花見で一杯(8,32) + 月見で一杯(28,32)

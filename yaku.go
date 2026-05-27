@@ -180,8 +180,9 @@ func CheckReach(captured, opponentCaptured []Card) []YakuReach {
 	}
 
 	// --- 猪鹿蝶 ---
+	// リーチ条件: 3枚中2枚を自分が持っていて、もう1枚が相手に取られていない
 	inoshikacho := []int{20, 24, 36}
-	if !hasYaku("猪鹿蝶") {
+	if !hasYaku("猪鹿蝶") && countContained(inoshikacho, taneIDs) == 2 {
 		if m := missingCards(inoshikacho, taneIDs); len(m) == 1 {
 			reaches = append(reaches, YakuReach{"猪鹿蝶", m})
 		}
@@ -221,8 +222,9 @@ func CheckReach(captured, opponentCaptured []Card) []YakuReach {
 	if !bothDone {
 		akatanMissing := missingCards(akatan, tanzakuIDs)
 		aotanMissing := missingCards(aotan, tanzakuIDs)
-		akatanReach := len(akatanMissing) == 1
-		aotanReach := len(aotanMissing) == 1
+		// リーチ条件: 3枚中2枚を自分が持っていて、もう1枚が相手に取られていない
+		akatanReach := len(akatanMissing) == 1 && countContained(akatan, tanzakuIDs) == 2
+		aotanReach := len(aotanMissing) == 1 && countContained(aotan, tanzakuIDs) == 2
 
 		switch {
 		case akatanDone && aotanReach:
