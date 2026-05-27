@@ -2,6 +2,12 @@ package main
 
 import "testing"
 
+// テスト用に複数ファイルから参照される定数
+const (
+	testCardName0  = "松に鶴"   // AllCards[0].Name
+	testCardLabel0 = "[松:光]" // AllCards[0].Display()
+)
+
 func TestMonthString(t *testing.T) {
 	expected := []string{"松", "梅", "桜", "藤", "菖蒲", "牡丹", "萩", "芒", "菊", "紅葉", "柳", "桐"}
 	months := []Month{January, February, March, April, May, June, July, August, September, October, November, December}
@@ -53,7 +59,7 @@ func TestCardDisplay(t *testing.T) {
 		card Card
 		want string
 	}{
-		{AllCards[0], "[松:光]"},
+		{AllCards[0], testCardLabel0},
 		{AllCards[1], "[松:短]"},
 		{AllCards[2], "[松:カ]"},
 		{AllCards[4], "[梅:種]"},
@@ -70,7 +76,7 @@ func TestCardDisplayFull(t *testing.T) {
 		card Card
 		want string
 	}{
-		{AllCards[0], "松に鶴"},
+		{AllCards[0], testCardName0},
 		{AllCards[8], "桜に幕"},
 		{AllCards[40], "柳に小野道風"},
 	}

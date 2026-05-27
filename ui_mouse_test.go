@@ -8,6 +8,11 @@ import (
 	"github.com/awesome-gocui/gocui"
 )
 
+const (
+	handlerNameHandClick  = "handleHandClick"
+	handlerNameFieldClick = "handleFieldClick"
+)
+
 func setupMouseTestUI(t *testing.T) (*UI, *gocui.Gui) {
 	t.Helper()
 	g := newTestGUI(t)
@@ -132,7 +137,7 @@ func TestHandleKoiKoiClickWrongLine(t *testing.T) {
 	u, g := setupMouseTestUI(t)
 	u.game = NewGame(12)
 	u.game.PlayerHand = []Card{AllCards[0], AllCards[4]}
-	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.newYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseKoiKoi
 	u.koikoiCursor = 0
 
@@ -165,7 +170,7 @@ func TestHandleCPUKoiKoiClickOK(t *testing.T) {
 	u.game = NewGame(12)
 	u.game.PlayerHand = []Card{AllCards[0]}
 	u.game.CPUHand = []Card{AllCards[4]}
-	u.cpuKoiKoiYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.cpuKoiKoiYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseCPUKoiKoi
 
 	if err := u.handleCPUKoiKoiClick(g, nil); err != nil {
@@ -185,7 +190,7 @@ func TestHandleCPUKoiKoiClickRoundOver(t *testing.T) {
 	u.game = NewGame(12)
 	u.game.PlayerHand = nil // 手札なし = ラウンド終了
 	u.game.CPUHand = nil
-	u.cpuKoiKoiYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.cpuKoiKoiYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseCPUKoiKoi
 
 	if err := u.handleCPUKoiKoiClick(g, nil); err != nil {
@@ -490,7 +495,7 @@ func TestHandleEnterKoiKoiDecisionKoiKoi(t *testing.T) {
 	u.game.PlayerHand = []Card{AllCards[0], AllCards[4]}
 	u.game.PlayerCaptured = cardsFromIDList(0, 8, 28)
 	u.game.Deck = []Card{AllCards[12]}
-	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.newYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseKoiKoi
 	u.koikoiCursor = 0 // こいこい
 
@@ -508,7 +513,7 @@ func TestHandleEnterKoiKoiDecisionShoubu(t *testing.T) {
 	u.game = NewGame(12)
 	u.game.PlayerHand = []Card{AllCards[0]}
 	u.game.PlayerCaptured = cardsFromIDList(0, 8, 28)
-	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.newYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseKoiKoi
 	u.koikoiCursor = 1 // 勝負
 
@@ -799,7 +804,7 @@ func TestHandleKoiKoiClickKoiKoiButton(t *testing.T) {
 	u.game.PlayerHand = []Card{AllCards[0], AllCards[4]}
 	u.game.PlayerCaptured = cardsFromIDList(0, 8, 28)
 	u.game.Deck = []Card{AllCards[12]}
-	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.newYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseKoiKoi
 
 	if err := u.layout(g); err != nil {
@@ -839,7 +844,7 @@ func TestHandleKoiKoiClickShoubuButton(t *testing.T) {
 	u.game = NewGame(12)
 	u.game.PlayerHand = []Card{AllCards[0]}
 	u.game.PlayerCaptured = cardsFromIDList(0, 8, 28)
-	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.newYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseKoiKoi
 
 	if err := u.layout(g); err != nil {
@@ -872,7 +877,7 @@ func TestHandleKoiKoiClickBetweenButtons(t *testing.T) {
 	u, g := setupMouseTestUI(t)
 	u.game = NewGame(12)
 	u.game.PlayerHand = []Card{AllCards[0]}
-	u.newYaku = []Yaku{{Name: "三光", Points: 5}}
+	u.newYaku = []Yaku{{Name: yakuSankou, Points: 5}}
 	u.phase = PhaseKoiKoi
 	u.koikoiCursor = 0
 
@@ -1448,8 +1453,8 @@ func TestAllClickHandlersBlockedByQuitConf(t *testing.T) {
 		name    string
 		handler func(*gocui.Gui, *gocui.View) error
 	}{
-		{"handleHandClick", u.handleHandClick},
-		{"handleFieldClick", u.handleFieldClick},
+		{handlerNameHandClick, u.handleHandClick},
+		{handlerNameFieldClick, u.handleFieldClick},
 	}
 
 	for _, h := range handlers {
@@ -1470,8 +1475,8 @@ func TestAllClickHandlersBlockedByOptions(t *testing.T) {
 		name    string
 		handler func(*gocui.Gui, *gocui.View) error
 	}{
-		{"handleHandClick", u.handleHandClick},
-		{"handleFieldClick", u.handleFieldClick},
+		{handlerNameHandClick, u.handleHandClick},
+		{handlerNameFieldClick, u.handleFieldClick},
 	}
 
 	for _, h := range handlers {
@@ -1492,8 +1497,8 @@ func TestAllClickHandlersBlockedByLog(t *testing.T) {
 		name    string
 		handler func(*gocui.Gui, *gocui.View) error
 	}{
-		{"handleHandClick", u.handleHandClick},
-		{"handleFieldClick", u.handleFieldClick},
+		{handlerNameHandClick, u.handleHandClick},
+		{handlerNameFieldClick, u.handleFieldClick},
 	}
 
 	for _, h := range handlers {
@@ -1514,8 +1519,8 @@ func TestAllClickHandlersBlockedByHelp(t *testing.T) {
 		name    string
 		handler func(*gocui.Gui, *gocui.View) error
 	}{
-		{"handleHandClick", u.handleHandClick},
-		{"handleFieldClick", u.handleFieldClick},
+		{handlerNameHandClick, u.handleHandClick},
+		{handlerNameFieldClick, u.handleFieldClick},
 	}
 
 	for _, h := range handlers {

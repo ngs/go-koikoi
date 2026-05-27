@@ -1,5 +1,22 @@
 package main
 
+// 役名
+const (
+	yakuGokou       = "五光"
+	yakuSikou       = "四光"
+	yakuAmeSikou    = "雨四光"
+	yakuSankou      = "三光"
+	yakuInoshikacho = "猪鹿蝶"
+	yakuHanami      = "花見で一杯"
+	yakuTsukimi     = "月見で一杯"
+	yakuAkatan      = "赤短"
+	yakuAotan       = "青短"
+	yakuAkatanAotan = "赤短・青短の重複"
+	yakuTane        = "タネ"
+	yakuTan         = "タン"
+	yakuKasu        = "カス"
+)
+
 // Yaku 役
 type Yaku struct {
 	Name   string
@@ -31,13 +48,13 @@ func CheckYaku(captured []Card) []Yaku {
 
 	switch {
 	case hasGokou:
-		yakus = append(yakus, Yaku{"五光", 10})
+		yakus = append(yakus, Yaku{yakuGokou, 10})
 	case hasSikou:
-		yakus = append(yakus, Yaku{"四光", 8})
+		yakus = append(yakus, Yaku{yakuSikou, 8})
 	case hasAmeSikou:
-		yakus = append(yakus, Yaku{"雨四光", 7})
+		yakus = append(yakus, Yaku{yakuAmeSikou, 7})
 	case hasSankou:
-		yakus = append(yakus, Yaku{"三光", 5})
+		yakus = append(yakus, Yaku{yakuSankou, 5})
 	}
 
 	// 猪鹿蝶: 5文 + 種札が増えるごとに+1文
@@ -45,18 +62,18 @@ func CheckYaku(captured []Card) []Yaku {
 	hasInoshikacho := containsAll(taneIDs, 24, 36, 20) // 萩に猪, 紅葉に鹿, 牡丹に蝶
 	if hasInoshikacho {
 		extra := len(tane) - 3
-		yakus = append(yakus, Yaku{"猪鹿蝶", 5 + extra})
+		yakus = append(yakus, Yaku{yakuInoshikacho, 5 + extra})
 	}
 
 	// 花見で一杯: 桜に幕(8) + 菊に盃(32) → 5文
 	allIDs := cardIDs(captured)
 	if containsAll(allIDs, 8, 32) {
-		yakus = append(yakus, Yaku{"花見で一杯", 5})
+		yakus = append(yakus, Yaku{yakuHanami, 5})
 	}
 
 	// 月見で一杯: 芒に月(28) + 菊に盃(32) → 5文
 	if containsAll(allIDs, 28, 32) {
-		yakus = append(yakus, Yaku{"月見で一杯", 5})
+		yakus = append(yakus, Yaku{yakuTsukimi, 5})
 	}
 
 	// 短冊系（排他: 赤短・青短の重複 > 赤短/青短 > タン）
@@ -67,26 +84,26 @@ func CheckYaku(captured []Card) []Yaku {
 	switch {
 	case hasAkatan && hasAotan:
 		// 赤短・青短の重複: 10文 + 短冊が増えるごとに+1文
-		yakus = append(yakus, Yaku{"赤短・青短の重複", 10 + extraPoints(len(tanzaku), 6)})
+		yakus = append(yakus, Yaku{yakuAkatanAotan, 10 + extraPoints(len(tanzaku), 6)})
 	case hasAkatan:
-		yakus = append(yakus, Yaku{"赤短", 5 + extraPoints(len(tanzaku), 3)})
+		yakus = append(yakus, Yaku{yakuAkatan, 5 + extraPoints(len(tanzaku), 3)})
 	case hasAotan:
-		yakus = append(yakus, Yaku{"青短", 5 + extraPoints(len(tanzaku), 3)})
+		yakus = append(yakus, Yaku{yakuAotan, 5 + extraPoints(len(tanzaku), 3)})
 	}
 
 	// タネ: 種札5枚以上で1文 + 1枚ごとに+1文（猪鹿蝶ができたら無効）
 	if !hasInoshikacho && len(tane) >= 5 {
-		yakus = append(yakus, Yaku{"タネ", 1 + (len(tane) - 5)})
+		yakus = append(yakus, Yaku{yakuTane, 1 + (len(tane) - 5)})
 	}
 
 	// タン: 短冊札5枚以上で1文 + 1枚ごとに+1文（赤短か青短ができたら無効）
 	if !hasAkatan && !hasAotan && len(tanzaku) >= 5 {
-		yakus = append(yakus, Yaku{"タン", 1 + (len(tanzaku) - 5)})
+		yakus = append(yakus, Yaku{yakuTan, 1 + (len(tanzaku) - 5)})
 	}
 
 	// カス: カス札10枚以上で1文 + 1枚ごとに+1文
 	if len(kasu) >= 10 {
-		yakus = append(yakus, Yaku{"カス", 1 + (len(kasu) - 10)})
+		yakus = append(yakus, Yaku{yakuKasu, 1 + (len(kasu) - 10)})
 	}
 
 	return yakus
@@ -148,54 +165,54 @@ func CheckReach(captured, opponentCaptured []Card) []YakuReach {
 	hasYanagi := contains(hikariIDs, 40)
 
 	// 五光リーチ (光札4枚)
-	if !hasYaku("五光") && len(hikari) == 4 {
+	if !hasYaku(yakuGokou) && len(hikari) == 4 {
 		if m := missingCards(allHikari, hikariIDs); len(m) == 1 {
-			reaches = append(reaches, YakuReach{"五光", m})
+			reaches = append(reaches, YakuReach{yakuGokou, m})
 		}
 	}
 
 	// 四光リーチ (柳以外の光3枚、柳なし)
-	if !hasYaku("四光") && !hasYaku("五光") && hikariNoYanagi == 3 && !hasYanagi {
+	if !hasYaku(yakuSikou) && !hasYaku(yakuGokou) && hikariNoYanagi == 3 && !hasYanagi {
 		if m := missingCards(noYanagiHikari, hikariIDs); len(m) == 1 {
-			reaches = append(reaches, YakuReach{"四光", m})
+			reaches = append(reaches, YakuReach{yakuSikou, m})
 		}
 	}
 
 	// 雨四光リーチ
-	if !hasYaku("雨四光") && !hasYaku("四光") && !hasYaku("五光") {
+	if !hasYaku(yakuAmeSikou) && !hasYaku(yakuSikou) && !hasYaku(yakuGokou) {
 		if hasYanagi && hikariNoYanagi == 2 {
 			// 柳あり + 柳以外2枚 → 柳以外の光あと1枚
 			m := missingCards(noYanagiHikari, hikariIDs)
-			reaches = append(reaches, YakuReach{"雨四光", m})
+			reaches = append(reaches, YakuReach{yakuAmeSikou, m})
 		} else if !hasYanagi && hikariNoYanagi == 3 {
 			// 三光成立中 → 柳を取れば雨四光
-			reaches = append(reaches, YakuReach{"雨四光", []Card{AllCards[40]}})
+			reaches = append(reaches, YakuReach{yakuAmeSikou, []Card{AllCards[40]}})
 		}
 	}
 
 	// 三光リーチ (柳以外の光2枚、柳なし)
-	if !hasYaku("三光") && !hasYaku("雨四光") && !hasYaku("四光") && !hasYaku("五光") && hikariNoYanagi == 2 && !hasYanagi {
+	if !hasYaku(yakuSankou) && !hasYaku(yakuAmeSikou) && !hasYaku(yakuSikou) && !hasYaku(yakuGokou) && hikariNoYanagi == 2 && !hasYanagi {
 		m := missingCards(noYanagiHikari, hikariIDs)
-		reaches = append(reaches, YakuReach{"三光", m})
+		reaches = append(reaches, YakuReach{yakuSankou, m})
 	}
 
 	// --- 猪鹿蝶 ---
 	// リーチ条件: 3枚中2枚を自分が持っていて、もう1枚が相手に取られていない
 	inoshikacho := []int{20, 24, 36}
-	if !hasYaku("猪鹿蝶") && countContained(inoshikacho, taneIDs) == 2 {
+	if !hasYaku(yakuInoshikacho) && countContained(inoshikacho, taneIDs) == 2 {
 		if m := missingCards(inoshikacho, taneIDs); len(m) == 1 {
-			reaches = append(reaches, YakuReach{"猪鹿蝶", m})
+			reaches = append(reaches, YakuReach{yakuInoshikacho, m})
 		}
 	}
 
 	// --- 花見で一杯 ---
 	// リーチ条件: 2枚中1枚を自分が持っていて、もう1枚が相手に取られていない
 	hanami := []int{8, 32}
-	if !hasYaku("花見で一杯") {
+	if !hasYaku(yakuHanami) {
 		haveCount := countContained(hanami, allIDs)
 		if haveCount == 1 {
 			if m := missingCards(hanami, allIDs); len(m) == 1 {
-				reaches = append(reaches, YakuReach{"花見で一杯", m})
+				reaches = append(reaches, YakuReach{yakuHanami, m})
 			}
 		}
 	}
@@ -203,11 +220,11 @@ func CheckReach(captured, opponentCaptured []Card) []YakuReach {
 	// --- 月見で一杯 ---
 	// リーチ条件: 2枚中1枚を自分が持っていて、もう1枚が相手に取られていない
 	tsukimi := []int{28, 32}
-	if !hasYaku("月見で一杯") {
+	if !hasYaku(yakuTsukimi) {
 		haveCount := countContained(tsukimi, allIDs)
 		if haveCount == 1 {
 			if m := missingCards(tsukimi, allIDs); len(m) == 1 {
-				reaches = append(reaches, YakuReach{"月見で一杯", m})
+				reaches = append(reaches, YakuReach{yakuTsukimi, m})
 			}
 		}
 	}
@@ -215,9 +232,9 @@ func CheckReach(captured, opponentCaptured []Card) []YakuReach {
 	// --- 短冊系 ---
 	akatan := []int{1, 5, 9}
 	aotan := []int{21, 33, 37}
-	akatanDone := hasYaku("赤短") || hasYaku("赤短・青短の重複")
-	aotanDone := hasYaku("青短") || hasYaku("赤短・青短の重複")
-	bothDone := hasYaku("赤短・青短の重複")
+	akatanDone := hasYaku(yakuAkatan) || hasYaku(yakuAkatanAotan)
+	aotanDone := hasYaku(yakuAotan) || hasYaku(yakuAkatanAotan)
+	bothDone := hasYaku(yakuAkatanAotan)
 
 	if !bothDone {
 		akatanMissing := missingCards(akatan, tanzakuIDs)
@@ -228,32 +245,32 @@ func CheckReach(captured, opponentCaptured []Card) []YakuReach {
 
 		switch {
 		case akatanDone && aotanReach:
-			reaches = append(reaches, YakuReach{"赤短・青短の重複", aotanMissing})
+			reaches = append(reaches, YakuReach{yakuAkatanAotan, aotanMissing})
 		case aotanDone && akatanReach:
-			reaches = append(reaches, YakuReach{"赤短・青短の重複", akatanMissing})
+			reaches = append(reaches, YakuReach{yakuAkatanAotan, akatanMissing})
 		default:
 			if !akatanDone && akatanReach {
-				reaches = append(reaches, YakuReach{"赤短", akatanMissing})
+				reaches = append(reaches, YakuReach{yakuAkatan, akatanMissing})
 			}
 			if !aotanDone && aotanReach {
-				reaches = append(reaches, YakuReach{"青短", aotanMissing})
+				reaches = append(reaches, YakuReach{yakuAotan, aotanMissing})
 			}
 		}
 	}
 
 	// --- タネ (5枚、猪鹿蝶未成立時のみ) ---
-	if !hasYaku("タネ") && !hasYaku("猪鹿蝶") && len(tane) == 4 {
-		reaches = append(reaches, YakuReach{"タネ", nil})
+	if !hasYaku(yakuTane) && !hasYaku(yakuInoshikacho) && len(tane) == 4 {
+		reaches = append(reaches, YakuReach{yakuTane, nil})
 	}
 
 	// --- タン (5枚、赤短/青短未成立時のみ) ---
-	if !hasYaku("タン") && !akatanDone && !aotanDone && len(tanzaku) == 4 {
-		reaches = append(reaches, YakuReach{"タン", nil})
+	if !hasYaku(yakuTan) && !akatanDone && !aotanDone && len(tanzaku) == 4 {
+		reaches = append(reaches, YakuReach{yakuTan, nil})
 	}
 
 	// --- カス (10枚) ---
-	if !hasYaku("カス") && len(kasu) == 9 {
-		reaches = append(reaches, YakuReach{"カス", nil})
+	if !hasYaku(yakuKasu) && len(kasu) == 9 {
+		reaches = append(reaches, YakuReach{yakuKasu, nil})
 	}
 
 	return reaches

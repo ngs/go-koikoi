@@ -353,7 +353,7 @@ func TestCheckNewYakuPlayer(t *testing.T) {
 	}
 	found := false
 	for _, y := range newYaku {
-		if y.Name == "三光" {
+		if y.Name == yakuSankou {
 			found = true
 		}
 	}
@@ -370,7 +370,7 @@ func TestCheckNewYakuCPU(t *testing.T) {
 	newYaku := g.CheckNewYaku(false)
 	found := false
 	for _, y := range newYaku {
-		if y.Name == "赤短" {
+		if y.Name == yakuAkatan {
 			found = true
 		}
 	}
@@ -382,7 +382,7 @@ func TestCheckNewYakuCPU(t *testing.T) {
 func TestCheckNewYakuNoNew(t *testing.T) {
 	g := NewGame(12)
 	g.PlayerCaptured = cardsFromIDList(0, 8, 28) // 三光
-	g.PlayerPrevYaku = []Yaku{{"三光", 5}}
+	g.PlayerPrevYaku = []Yaku{{yakuSankou, 5}}
 
 	newYaku := g.CheckNewYaku(true)
 	if len(newYaku) != 0 {
@@ -393,7 +393,7 @@ func TestCheckNewYakuNoNew(t *testing.T) {
 func TestCheckNewYakuUpgraded(t *testing.T) {
 	g := NewGame(12)
 	g.PlayerCaptured = cardsFromIDList(0, 8, 28, 44) // 四光
-	g.PlayerPrevYaku = []Yaku{{"三光", 5}}
+	g.PlayerPrevYaku = []Yaku{{yakuSankou, 5}}
 
 	newYaku := g.CheckNewYaku(true)
 	found := false
