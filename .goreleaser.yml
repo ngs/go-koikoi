@@ -33,7 +33,7 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/ngs/go-koikoi
-    description: 花札こいこいゲーム（CUI・任天堂ルール準拠）
+    description: 花札こいこいゲーム（TUI・任天堂ルール準拠）
     license: MIT
 
 checksum:

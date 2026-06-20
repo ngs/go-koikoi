@@ -1,6 +1,6 @@
 # koikoi
 
-Go 製の CUI 花札こいこいゲーム（任天堂ルール準拠）。
+Go 製の TUI 花札こいこいゲーム（任天堂ルール準拠）。
 TUI フレームワークに `github.com/awesome-gocui/gocui` を使用。
 
 - リポジトリ: https://github.com/ngs/go-koikoi

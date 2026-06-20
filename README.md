@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ngs/go-koikoi/actions/workflows/ci.yml/badge.svg)](https://github.com/ngs/go-koikoi/actions/workflows/ci.yml)
 
-Go 製の CUI 花札こいこいゲーム（任天堂ルール準拠）。
+Go 製の TUI 花札こいこいゲーム（任天堂ルール準拠）。
 
 ![Screenshot](https://github.com/ngs/go-koikoi/raw/master/docs/screenshot.jpg)
 
