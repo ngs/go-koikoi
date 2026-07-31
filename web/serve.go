@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"time"
 )
 
 func main() {
@@ -28,6 +29,10 @@ func main() {
 		}
 	}
 
+	srv := &http.Server{
+		Handler:           http.FileServer(http.Dir(*dir)),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	log.Printf("http://%s/ で %s を配信します", ln.Addr(), *dir)
-	log.Fatal(http.Serve(ln, http.FileServer(http.Dir(*dir))))
+	log.Fatal(srv.Serve(ln))
 }

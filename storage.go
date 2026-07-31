@@ -9,7 +9,7 @@ import (
 
 // readFileData は path のファイル内容を読み込む。
 func readFileData(path string) ([]byte, error) {
-	return os.ReadFile(path)
+	return os.ReadFile(filepath.Clean(path))
 }
 
 // writeFileData は path にデータを書き込む（親ディレクトリも作成）。
