@@ -4,10 +4,12 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"log"
 	"net"
 	"net/http"
+	"syscall"
 	"time"
 )
 
@@ -17,20 +19,26 @@ func main() {
 	flag.Parse()
 
 	ln, err := net.Listen("tcp", *addr)
-	if err != nil {
-		// 指定ポートが使用中などの場合は空きポートに任せる
+	if errors.Is(err, syscall.EADDRINUSE) {
+		// 指定ポートが使用中の場合だけ空きポートへフォールバックする
 		host, _, splitErr := net.SplitHostPort(*addr)
 		if splitErr != nil || host == "" {
 			host = "localhost"
 		}
+		log.Printf("%s は使用中のため空きポートを探します", *addr)
 		ln, err = net.Listen("tcp", net.JoinHostPort(host, "0"))
-		if err != nil {
-			log.Fatal(err)
-		}
+	}
+	if err != nil {
+		log.Fatal(err)
 	}
 
+	fs := http.FileServer(http.Dir(*dir))
 	srv := &http.Server{
-		Handler:           http.FileServer(http.Dir(*dir)),
+		// 再ビルドした main.wasm がキャッシュから返らないようにする
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			fs.ServeHTTP(w, r)
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("http://%s/ で %s を配信します", ln.Addr(), *dir)

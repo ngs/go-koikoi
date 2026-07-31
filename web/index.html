@@ -49,8 +49,11 @@
 			function terminalCells() {
 				var term = document.getElementById("terminal");
 				var r = term.getBoundingClientRect();
-				var cols = window.width || 80;
-				var rows = window.height || 24;
+				// 現在のセル数は tcell.js の tcellTermSize() から取得する
+				// (window への var 漏れに依存しない)
+				var size = typeof tcellTermSize === "function" ? tcellTermSize() : [80, 24];
+				var cols = size[0];
+				var rows = size[1];
 				if (!r.width || !r.height) {
 					return [0, 0];
 				}

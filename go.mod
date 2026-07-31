@@ -2,7 +2,7 @@ module go.ngs.io/koikoi
 
 go 1.25.0
 
-require github.com/ngs/gocui v1.1.1-0.20260731220637-bcb3c453602c
+require github.com/ngs/gocui v1.1.1-0.20260731222646-a277bedc3331
 
 require (
 	github.com/gdamore/encoding v1.0.1 // indirect

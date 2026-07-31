@@ -251,7 +251,8 @@ function setCursorStyle(newClass, newColor) {
 
 function beep() {
   beepAudio.currentTime = 0;
-  beepAudio.play();
+  // Rejected by autoplay policy before the first user gesture; ignore.
+  beepAudio.play().catch(() => {});
 }
 
 function setTitle(title) {
@@ -264,15 +265,25 @@ function intToHex(n) {
 
 initialize();
 
+// tcellTermSize exposes the current terminal size in cells to the hosting
+// page (index.html) without relying on top-level vars leaking to window.
+function tcellTermSize() {
+  return [width, height];
+}
+
 // Cell metrics must be computed per event: at script load the terminal is
 // still empty, so clientWidth/clientHeight are 0 and a cached value would map
-// every click to the bottom-right cell.
+// every click to the bottom-right cell. Coordinates are derived from
+// clientX/clientY relative to the terminal rect, NOT offsetX/offsetY: the
+// latter are relative to event.target, which is an inner cell span when the
+// clicked cell is styled, yielding coordinates near zero.
 function eventCell(e) {
-  var fontwidth = term.clientWidth / width;
-  var fontheight = term.clientHeight / height;
+  var r = term.getBoundingClientRect();
+  var fontwidth = r.width / width;
+  var fontheight = r.height / height;
   return [
-    Math.min((e.offsetX / fontwidth) | 0, width - 1),
-    Math.min((e.offsetY / fontheight) | 0, height - 1),
+    Math.min((((e.clientX - r.left) / fontwidth) | 0), width - 1),
+    Math.min((((e.clientY - r.top) / fontheight) | 0), height - 1),
   ];
 }
 
