@@ -15,6 +15,10 @@ Go 製の CUI 花札こいこいゲーム（任天堂ルール準拠）。
 - 💾 ゲーム進捗の自動セーブ
 - 🏆 リーチ（テンパイ）表示
 
+## ブラウザで遊ぶ
+
+インストール不要で <https://koikoi.ngs.io> からそのまま遊べます（WebAssembly。進捗は localStorage に自動セーブ）。
+
 ## インストール
 
 ### Go
@@ -37,6 +41,12 @@ git clone https://github.com/ngs/go-koikoi.git
 cd go-koikoi
 go build -o koikoi .
 ./koikoi
+```
+
+ブラウザ (WASM) 版をローカルで動かす場合:
+
+```bash
+make serve-wasm
 ```
 
 ## 使い方

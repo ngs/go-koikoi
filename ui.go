@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/awesome-gocui/gocui"
+	"github.com/ngs/gocui"
 )
 
 const (

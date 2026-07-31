@@ -54,3 +54,12 @@ go build -o koikoi .
 - ポップアップの `FrameRunes` は11文字指定で、T 字結合位置にコーナー文字を割り当て
 - 札の表示は `[月:種]` 形式（例: `[松:光]`）
 - ゲーム状態は JSON でシリアライズ。札は ID (0-47) で保存
+
+## ブラウザ (WASM) 版
+
+- <https://koikoi.ngs.io> で公開。GitHub Pages + `.github/workflows/pages.yml`（master push で自動デプロイ）
+- gocui は js/wasm 対応のため fork [ngs/gocui](https://github.com/ngs/gocui) を使用（upstream PR: awesome-gocui/gocui#138。マージされたら本家に戻す）
+- `storage.go` / `storage_js.go`: 永続化の抽象。js ビルドでは localStorage に保存
+- `web/`: 静的アセット。`tcell.js` は tcell 同梱の webfiles に2つのパッチ済み（ワイド文字の隣接セル清掃 + `.wide` クラス付与、クリック座標のセル換算を都度計算）。tcell を更新して webfiles を取り直す場合はパッチの再適用が必要
+- `web/index.html` の `terminalCells()` / `tcellSetSize()` は fork gocui の `gui_js.go` と対になる契約（ウィンドウいっぱいのセル数で起動・リサイズ追従）
+- `make wasm` で `dist/` 生成、`make serve-wasm` でローカル確認（ポート使用中は自動で空きポート）

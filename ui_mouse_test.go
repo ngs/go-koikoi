@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/awesome-gocui/gocui"
+	"github.com/ngs/gocui"
 )
 
 const (

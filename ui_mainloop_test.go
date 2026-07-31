@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/awesome-gocui/gocui"
+	"github.com/ngs/gocui"
 )
 
 func setupCPUTurnUI(t *testing.T) (*UI, *gocui.Gui) {

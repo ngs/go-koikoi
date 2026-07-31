@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 )
 
@@ -86,14 +85,11 @@ func SaveDataToGame(sd *SaveData) *Game {
 }
 
 func saveJSON(path string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	return writeFileData(path, data)
 }
 
 func SaveGame(path string, sd *SaveData) error {
@@ -103,7 +99,7 @@ func SaveGame(path string, sd *SaveData) error {
 func LoadGame(path string) (SaveData, error) {
 	path = filepath.Clean(path)
 	var sd SaveData
-	data, err := os.ReadFile(path)
+	data, err := readFileData(path)
 	if err != nil {
 		return sd, err
 	}
@@ -114,5 +110,5 @@ func LoadGame(path string) (SaveData, error) {
 }
 
 func DeleteSave(path string) {
-	_ = os.Remove(path)
+	removeFileData(path)
 }

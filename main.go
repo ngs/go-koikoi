@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awesome-gocui/gocui"
+	"github.com/ngs/gocui"
 )
 
 func main() {

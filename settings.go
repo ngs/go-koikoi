@@ -51,7 +51,7 @@ func DefaultBaseDir() string {
 func LoadSettings(path string) (Settings, error) {
 	path = filepath.Clean(path)
 	s := DefaultSettings()
-	data, err := os.ReadFile(path)
+	data, err := readFileData(path)
 	if err != nil {
 		return s, err
 	}
