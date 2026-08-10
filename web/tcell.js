@@ -61,7 +61,7 @@ function clearScreen(fg, bg) {
   }
 }
 
-function drawCell(x, y, s, fg, bg, attrs, us, uc) {
+function drawCell(x, y, s, fg, bg, attrs, us, uc, w) {
   var span = document.createElement("span");
   var use = false;
 
@@ -126,46 +126,25 @@ function drawCell(x, y, s, fg, bg, attrs, us, uc) {
     span.appendChild(textnode);
   }
 
-  // Wide (2-column) characters: force the glyph to occupy exactly 2 cells
-  // (2ch) regardless of the font's CJK metrics, and clear the stale cell at
-  // x+1 which the Go side skips drawing. Without this, old characters remain
-  // visible next to CJK text and rows containing CJK drift out of alignment.
-  if (isWide(s)) {
+  // Force wide glyphs to occupy exactly 2 cells (2ch) regardless of the
+  // font's CJK metrics; without it rows containing CJK drift out of
+  // alignment. Paired with `#terminal .wide` in index.html.
+  if (w > 1) {
     span.classList.add("wide");
     use = true;
-    if (x + 1 < width) {
-      content.data[y].data[x + 1] = document.createTextNode("");
-    }
   }
 
   content.dirty = true; // invalidate terminal- new cell
   content.data[y].previous = null; // invalidate row- new row
   content.data[y].data[x] = use ? span : textnode;
-}
 
-// isWide reports whether the first code point of s renders as a
-// 2-column (East Asian wide / fullwidth) character.
-function isWide(s) {
-  if (!s) {
-    return false;
+  // A wide (multi-column) character occupies the following cells as well,
+  // but the Go side skips drawing them. Clear their previous content,
+  // otherwise stale characters remain visible next to wide text after
+  // partial redraws.
+  for (var i = x + 1; i < x + (w || 1) && i < width; i++) {
+    content.data[y].data[i] = document.createTextNode("");
   }
-  var c = s.codePointAt(0);
-  return (
-    (c >= 0x1100 && c <= 0x115f) || // Hangul Jamo
-    (c >= 0x2e80 && c <= 0x303e) || // CJK Radicals .. CJK Symbols
-    (c >= 0x3041 && c <= 0x33ff) || // Hiragana .. CJK Compatibility
-    (c >= 0x3400 && c <= 0x4dbf) || // CJK Ext A
-    (c >= 0x4e00 && c <= 0x9fff) || // CJK Unified
-    (c >= 0xa000 && c <= 0xa4cf) || // Yi
-    (c >= 0xac00 && c <= 0xd7a3) || // Hangul Syllables
-    (c >= 0xf900 && c <= 0xfaff) || // CJK Compatibility Ideographs
-    (c >= 0xfe30 && c <= 0xfe4f) || // CJK Compatibility Forms
-    (c >= 0xff00 && c <= 0xff60) || // Fullwidth Forms
-    (c >= 0xffe0 && c <= 0xffe6) ||
-    (c >= 0x1f300 && c <= 0x1f64f) || // Emoji
-    (c >= 0x1f900 && c <= 0x1f9ff) ||
-    (c >= 0x20000 && c <= 0x3fffd) // CJK Ext B+
-  );
 }
 
 function show() {
@@ -271,12 +250,12 @@ function tcellTermSize() {
   return [width, height];
 }
 
-// Cell metrics must be computed per event: at script load the terminal is
-// still empty, so clientWidth/clientHeight are 0 and a cached value would map
-// every click to the bottom-right cell. Coordinates are derived from
-// clientX/clientY relative to the terminal rect, NOT offsetX/offsetY: the
-// latter are relative to event.target, which is an inner cell span when the
-// clicked cell is styled, yielding coordinates near zero.
+// Cell metrics must be computed per event rather than at load time: the
+// terminal element is still empty here, so clientWidth/clientHeight are 0
+// and a cached value would map every mouse event to the bottom-right cell.
+// Coordinates are derived from clientX/clientY relative to the terminal
+// rect, not offsetX/offsetY: the latter are relative to event.target,
+// which is an inner cell span whenever the pointed-at cell is styled.
 function eventCell(e) {
   var r = term.getBoundingClientRect();
   var fontwidth = r.width / width;
