@@ -46,7 +46,9 @@ webfiles を取り直す場合は再適用が必要
 
 ## `index.html` 側の対になる契約
 
-- `terminalCells()` → fork gocui (`ngs/gocui`) の `gui_js.go` が起動時に
-  呼び、ウィンドウいっぱいのセル数でターミナルを開く
-- `tcellSetSize(cols, rows)` → fork gocui が登録し、resize リスナーから
-  呼ぶと実行中のターミナルがリサイズされる
+- `terminalCells()` → ウィンドウいっぱいのセル数を計算する。呼び出すのは
+  同じ `index.html` の resize リスナーだけで、gocui からは参照されない
+- `koikoiSetSize(cols, rows)` → `ui_js.go` が公開する。resize リスナーから
+  呼ぶと `gocui.SetSize()` → `tcell.Screen.SetSize()` へ届き、実行中の
+  ターミナルがリサイズされる。起動時のサイズも、`ui_js.go` が公開直後に
+  発火する resize イベント経由でこのリスナーから決まる

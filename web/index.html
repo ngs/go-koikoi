@@ -44,8 +44,9 @@
 		</a>
 		<pre id="terminal"></pre>
 		<script>
-			// gocui (ngs/gocui fork) が起動時に呼び出し、ウィンドウに収まる
-			// 最大セル数でターミナルを開く。以後のリサイズは tcellSetSize で追従。
+			// ウィンドウに収まる最大セル数を計算し、koikoiSetSize (wasm 側が
+			// 公開) 経由で gocui.SetSize へ渡す。起動時のサイズも wasm 側が
+			// 発火する resize イベントでこのリスナーから決まる。
 			function terminalCells() {
 				var term = document.getElementById("terminal");
 				var r = term.getBoundingClientRect();
@@ -65,9 +66,9 @@
 				];
 			}
 			window.addEventListener("resize", function () {
-				if (typeof window.tcellSetSize === "function") {
+				if (typeof window.koikoiSetSize === "function") {
 					var cells = terminalCells();
-					window.tcellSetSize(cells[0], cells[1]);
+					window.koikoiSetSize(cells[0], cells[1]);
 				}
 			});
 		</script>
