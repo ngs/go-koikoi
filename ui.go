@@ -176,6 +176,8 @@ func (u *UI) Run() error {
 		return err
 	}
 
+	registerWebResize(g)
+
 	return g.MainLoop()
 }
 

@@ -61,5 +61,5 @@ go build -o koikoi .
 - gocui は js/wasm 対応のため fork [ngs/gocui](https://github.com/ngs/gocui) を使用（upstream PR: awesome-gocui/gocui#138。マージされたら本家に戻す）
 - `storage.go` / `storage_js.go`: 永続化の抽象。js ビルドでは localStorage に保存
 - `web/`: 静的アセット。`tcell.js` は tcell 同梱の webfiles にパッチ済み。パッチは `web/tcell.js` 単体で完結せず **index.html の `.wide` CSS とセット**。一覧と再適用手順は [web/PATCHES.md](web/PATCHES.md)
-- `web/index.html` の `terminalCells()` / `tcellSetSize()` は fork gocui の `gui_js.go` と対になる契約（ウィンドウいっぱいのセル数で起動・リサイズ追従）
+- `web/index.html` の `terminalCells()` はウィンドウいっぱいのセル数を計算し、`ui_js.go` が公開する `koikoiSetSize()` 経由で `gocui.SetSize()` を呼ぶ。gocui 側が JS のグローバルを探しに来る仕組みは廃止した
 - `make wasm` で `dist/` 生成、`make serve-wasm` でローカル確認（ポート使用中は自動で空きポート）
